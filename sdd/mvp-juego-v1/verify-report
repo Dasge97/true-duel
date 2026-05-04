@@ -1,0 +1,111 @@
+# Verification Report
+
+**Change**: mvp-juego-v1  
+**Version**: N/A (delta spec sin version explicita)  
+**Mode**: Standard (Strict TDD desactivado)
+
+---
+
+### Completeness
+| Metric | Value |
+|--------|-------|
+| Tasks total | 15 |
+| Tasks complete | 15 |
+| Tasks incomplete | 0 |
+
+Sin tareas abiertas en `sdd/mvp-juego-v1/tasks`.
+
+---
+
+### Build & Tests Execution
+
+**Build / Type-check**: ➖ No verificado (toolchain ausente)
+```text
+php --version -> /bin/bash: php: command not found
+dart --version -> /bin/bash: dart: command not found
+flutter --version -> /bin/bash: flutter: command not found
+```
+
+**Tests**: ➖ No ejecutados (sin runner utilizable en este entorno)
+- Capabilities cacheadas (`sdd/juego/testing-capabilities`): runner `NOT FOUND`.
+- Test files detectados: `backend/symfony/tests/Ops/Application/RunReleaseGatePipelineHandlerTest.php`, `mobile/flutter/test/features/combat/data/combat_api_client_mvp_flow_test.dart`.
+- Estado de tests detectados: scaffolds/skeletons; uno marcado `skip` y sin aserciones reales de framework en entorno ejecutable.
+
+**Coverage**: ➖ Not available
+
+---
+
+### Spec Compliance Matrix
+
+| Requirement | Scenario | Test | Result |
+|-------------|----------|------|--------|
+| Core Loop de combate | Duración objetivo | (none found) | ❌ UNTESTED |
+| Resolución autoritativa | Divergencia cliente-servidor | (none found) | ❌ UNTESTED |
+| Cargas defensivas | Combate con defensa frecuente | (none found) | ❌ UNTESTED |
+| Modificadores acotados | Volatilidad controlada | (none found) | ❌ UNTESTED |
+| 4 campeones jugables | Fairness por campeón | (none found) | ❌ UNTESTED |
+| Economía sin poder pagado | Auditoría de tienda y recompensas | (none found) | ❌ UNTESTED |
+| Perfil competitivo mínimo | Consistencia de perfil | (none found) | ❌ UNTESTED |
+| Matchmaking y ranked | Calidad de match | (none found) | ❌ UNTESTED |
+| Onboarding de primera sesión | Conversión inicial | (none found) | ❌ UNTESTED |
+| Telemetría mínima accionable | Observabilidad operativa | (none found) | ❌ UNTESTED |
+
+**Compliance summary**: 0/10 escenarios compliant
+
+---
+
+### Correctness (Static - Structural Evidence)
+| Requirement | Status | Notes |
+|------------|--------|-------|
+| Core Loop de combate | ⚠️ Partial | `CombatEngine` implementa `Ataque/H1/H2/Defender`, KO y límite de turnos (`backend/symfony/src/Combat/Domain/CombatEngine.php`), sin evidencia runtime de 3-5 min ni 8-12 turnos estándar. |
+| Resolución autoritativa | ⚠️ Partial | `ResolveTurnHandler` implementa idempotencia, lock y `409 STATE_VERSION_CONFLICT` con reconcile (`backend/symfony/src/Combat/Application/ResolveTurnHandler.php`), sin pruebas ejecutadas. |
+| Cargas defensivas | ⚠️ Partial | Existe ganancia/consumo/cap de cargas, pero sin evidencia ejecutada de no estancamiento y rango 9-13 bajo defensa frecuente. |
+| Modificadores acotados | ❌ Missing | No se observa pool fijo de 10 modificadores ni trazabilidad por trigger; solo varianza RNG simple `-2..2`. |
+| 4 campeones jugables | ❌ Missing | No hay artefacto de roster exactamente de 4 campeones (Asesino/Bruiser/Control/Sustain) ni validación de counters/fairness por campeón. |
+| Economía sin poder pagado | ⚠️ Partial | Constraint DB (`chk_economy_not_p2w`) y guardrail en rewards (`GrantMatchRewardsHandler`) existen; falta auditoría funcional ejecutada extremo a extremo. |
+| Perfil competitivo mínimo | ⚠️ Partial | `GetCompetitiveProfileHandler` devuelve nivel, MMR global/champion, historial y no-combate con frescura, sin validación de actualización <=5 min en ejecución real. |
+| Matchmaking y ranked | ⚠️ Partial | `EnqueuePlayerHandler` y `UpdateRatingsHandler` implementan flujo base; no hay evidencia ejecutada de banda 53-57 ni de estabilidad de colas. |
+| Onboarding de primera sesión | ⚠️ Partial | `ProgressOnboardingHandler` y `onboarding_flow_controller.dart` gatean ranked tras tutorial + 3 asistidas, sin medición ejecutada de >=70% y >=50%. |
+| Telemetría mínima accionable | ⚠️ Partial | Outbox (`EmitDomainEventHandler`) y evaluación de gates (`EvaluateReleaseGatesHandler`) existen; no hay evidencia operativa de ventana 48-72h ni pipeline real de promoción/rollback. |
+
+---
+
+### Coherence (Design)
+| Decision | Followed? | Notes |
+|----------|-----------|-------|
+| Resolución 100% servidor | ✅ Yes | Coherente con `ResolveTurnHandler` autoritativo. |
+| Redis + PostgreSQL | ⚠️ Partial | Diseño refleja ambos, pero en código actual predominan contratos/abstracciones sin adapters operativos verificables en este entorno. |
+| REST + outbox de eventos | ⚠️ Partial | Outbox implementado; falta evidencia de consumer/operación continua para decisiones por lote. |
+| MMR global + por campeón | ⚠️ Partial | `UpdateRatingsHandler` calcula y persiste ambos deltas; sin pruebas de calibración/fairness ejecutadas. |
+| File changes plan vs actual | ✅ Yes | Los archivos clave del diseño están presentes, incluyendo cierre estructural de 5.2 y 5.3. |
+
+---
+
+### Issues Found
+
+**CRITICAL** (must fix before archive):
+- 10/10 escenarios de spec permanecen `UNTESTED`; no hay evidencia conductual en ejecución real.
+- No se puede ejecutar suite ni build/type-check por ausencia de `php`, `dart` y `flutter` en el entorno de verificación.
+- Hay requisitos de spec aún no demostrados estructuralmente (pool de 10 modificadores, roster estricto de 4 campeones y observabilidad operativa de 48-72h).
+
+**WARNING** (should fix):
+- Los tests detectados son esqueletos y no validan contratos completos (`RunReleaseGatePipelineHandlerTest.php`, `combat_api_client_mvp_flow_test.dart`).
+- El pipeline de release gates está implementado a nivel handler, pero sin integración ejecutada con telemetría real.
+
+**SUGGESTION** (nice to have):
+- Añadir suite ejecutable mínima backend+flutter en CI para convertir los 10 escenarios en pruebas rastreables a spec.
+- Formalizar fixtures de roster/modificadores para validar fairness y volatilidad en simulación repetible.
+
+---
+
+### MVP Readiness
+**NO**
+
+Estado final tras cierre estructural: implementación base completada, pero sin evidencia ejecutada de cumplimiento comportamental ni toolchain para validación automatizada.
+
+---
+
+### Verdict
+**FAIL**
+
+Aunque las tareas están al 100% en estructura (15/15), el gate de verificación requiere pruebas ejecutadas por escenario y eso hoy sigue en 0/10; por tanto el MVP no está listo para archive/soft-launch.

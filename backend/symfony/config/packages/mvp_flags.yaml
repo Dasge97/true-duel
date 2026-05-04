@@ -1,0 +1,5 @@
+parameters:
+  app.feature_flags:
+    modifiers_enabled: true
+    ranked_enabled: false
+    rewards_enabled: false
