@@ -37,3 +37,8 @@ mobile/flutter/ios/Flutter/Flutter.podspec
 
 # SDD local runtime artifacts (keep docs/specs tracked)
 .atl/tmp/
+
+# Agent-generated artifacts
+.atl/
+.alt/
+.agent/
