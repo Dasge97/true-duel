@@ -1,0 +1,39 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs and env
+*.log
+.env
+.env.*
+!.env.example
+
+# Symfony / PHP
+backend/symfony/vendor/
+backend/symfony/var/cache/
+backend/symfony/var/log/
+backend/symfony/var/sessions/
+backend/symfony/.phpunit.result.cache
+
+# Flutter / Dart
+mobile/flutter/.dart_tool/
+mobile/flutter/.packages
+mobile/flutter/build/
+mobile/flutter/.flutter-plugins
+mobile/flutter/.flutter-plugins-dependencies
+mobile/flutter/.metadata
+mobile/flutter/coverage/
+
+# Android / iOS generated
+mobile/flutter/android/.gradle/
+mobile/flutter/android/app/build/
+mobile/flutter/ios/Pods/
+mobile/flutter/ios/.symlinks/
+mobile/flutter/ios/Flutter/Flutter.framework
+mobile/flutter/ios/Flutter/Flutter.podspec
+
+# SDD local runtime artifacts (keep docs/specs tracked)
+.atl/tmp/
