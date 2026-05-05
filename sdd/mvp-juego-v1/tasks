@@ -1,0 +1,84 @@
+# Tasks: mvp-juego-v1
+
+## Lote 1: Fundacion de dominio y contratos (prioridad P0, riesgo alto)
+- [x] 1.1 Contrato API autoritativo + versionado/reconcile.
+- [x] 1.2 Esquema persistente inicial con constraints no-P2W e idempotencia.
+- [x] 1.3 Feature flags operativas (`modifiers_enabled`, `ranked_enabled`, `rewards_enabled`).
+
+## Lote 2: Motor de combate determinista (P0, riesgo muy alto)
+- [x] 2.1 Reglas de turno `Ataque/H1/H2/Defender`, KO y limite de turnos.
+- [x] 2.2 Sistema de Cargas defensivas con mitigacion y sin bloqueo infinito.
+- [x] 2.3 Resolucion autoritativa con lock e idempotencia.
+
+## Lote 3: Matchmaking, ranking y economia no-P2W (P1, riesgo alto)
+- [x] 3.1 Cola normal/ranked con ventana MMR progresiva y contrato cliente.
+- [x] 3.2 Actualizacion MMR global y por campeon.
+- [x] 3.3 Rewards post-match con guardrail hard-fail no-P2W.
+
+## Lote 4: Telemetria, onboarding y perfil (P1, riesgo medio-alto)
+- [x] 4.1 Outbox de eventos para combate/matchmaking/economia/onboarding.
+- [x] 4.2 Perfil competitivo minimo con frescura <=5 min.
+- [x] 4.3 Onboarding tutorial + 3 asistidas gateando ranked.
+
+## Lote 5: Gates MVP y bucle de release (P0 salida, riesgo alto)
+- [x] 5.1 Simulacion de balance con percentiles de turnos.
+- [x] 5.2 Pipeline de release gates con rollback por kill switch.
+- [x] 5.3 Flujo movil-backend MVP `enqueue -> resolve/reconcile -> complete`.
+
+## Cierre de gaps de verify (bloque actual)
+- [x] Pool explicito de 10 modificadores MVP implementado (`MvpModifierPool`).
+- [x] Roster explicito de 4 campeones MVP implementado (`MvpChampionRoster`).
+- [x] Cobertura critica backend agregada en `backend/symfony/tests/run.php`:
+  - core loop duracion/turnos,
+  - cargas defensivas,
+  - economia no-P2W guardrails,
+  - matchmaking/ranking basico,
+  - onboarding gate,
+  - telemetria y release gates.
+- [x] Escenario UNTESTED `Fairness por campeon` cubierto con prueba runtime trazable al spec:
+  - ventana por matchup 53-57,
+  - winrate global por campeon 48-52,
+  - muestra minima por campeon >=1000 y por matchup >=400.
+- [x] Escenario UNTESTED `Consistencia de perfil` cubierto con prueba runtime del handler:
+  - estructura esperada de campos,
+  - tipos minimos,
+  - frescura `isFresh` con umbral <=300s.
+- [x] Suite Flutter reforzada para reduce PARTIAL criticos en reconcile/flow:
+  - error cuando enqueue no devuelve `matchId`,
+  - reconcile con `serverStateVersion` string parseable.
+
+## Estado
+- [x] 15/15 tareas base completadas.
+- [x] Gaps criticos de verify cerrados con evidencia ejecutada en Docker.
+- [x] Escenarios previamente UNTESTED convertidos a COMPLIANT por evidencia runtime.
+
+## Cierre MVP Flutter jugable (bloque actual)
+- [x] Flujo movil jugable end-to-end implementado en Flutter (`inicio -> cola -> combate -> resultado`).
+- [x] Fallback offline/local battle mode implementado y configurado por defecto con toggle a modo API.
+- [x] Roster de 4 campeones visible y seleccionable desde pantalla de inicio.
+- [x] Pool de 10 modificadores MVP conectado al combate local (seleccion de 3 por partida).
+- [x] Defensa con cargas jugable en el motor local (hasta 2 cargas, consumo por mitigacion).
+- [x] Recompensas basicas post-partida visibles en pantalla de resultado.
+- [x] Proyecto Flutter scaffold completo para compilar APK debug instalable en Android.
+- [x] README actualizado con pasos exactos para ejecutar y generar APK debug.
+
+## Integracion API real + fallback bot (bloque actual)
+- [x] Backend Symfony con kernel API MVP real para auth/profile/ranking/users/history.
+- [x] Endpoint de matchmaking enqueue ajustado para devolver espera sin match real en ranked (fallback bot).
+- [x] Frontend Flutter integrado con API real para login/auth, profile, ranking, users e history con fallback local.
+- [x] Navegacion principal conectada a datos API cuando hay token valido.
+- [x] Modo local/offline mantenido como principal y modo bot explicito cuando no hay match online real.
+- [x] Contrato de error unificado (`error.code`, `error.message`) aplicado en backend y consumido por cliente.
+- [x] Validaciones por bloque ejecutadas y en verde (backend + flutter en Docker).
+
+## Cierre PASS condicionado -> PASS limpio (bloque actual)
+- [x] Endpoints de combate MVP reales expuestos en Symfony para integracion Flutter->HTTP:
+  - `POST /v1/matches/{matchId}/turns` con `409 STATE_VERSION_CONFLICT` si `clientStateVersion` va desfasada.
+  - `POST /v1/matches/{matchId}/turns` con `200` tras reconcile con version autoritativa.
+  - `POST /v1/matches/{matchId}/complete` con rewards/MMR.
+- [x] `enqueue` mantiene fallback esperado por cola:
+  - ranked -> `202` sin `matchId` (fallback bot),
+  - normal -> `200` con `matchId` real.
+- [x] Evidencia backend de `Duración objetivo` actualizada a muestra `>=1000` en `tests/run.php`.
+- [x] Test Flutter de integracion real agregado con env `SYM_API_BASE_URL` y skip controlado si no esta configurada.
+- [x] Corrida real en Docker (Symfony + Flutter en red compartida) ejecutada en verde para reconcile/fallback/complete.

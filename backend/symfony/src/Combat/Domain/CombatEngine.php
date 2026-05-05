@@ -12,6 +12,7 @@ final class CombatEngine
     private const ACTION_DEFEND = 'Defender';
     private const MAX_TURNS = 13;
     private const MAX_CHARGES = 3;
+    private const TURN_DURATION_SECONDS = 24;
 
     /**
      * @param array<string, int> $state
@@ -24,14 +25,16 @@ final class CombatEngine
         $attackerCharges = $state['attackerCharges'] ?? 0;
         $defenderCharges = $state['defenderCharges'] ?? 0;
 
-        $seed = crc32($matchId . ':' . $turnNo);
+        $seed = abs((int) crc32($matchId . ':' . $turnNo));
         mt_srand($seed);
         $variance = mt_rand(-2, 2);
+        $modifierId = MvpModifierPool::forTurn($matchId, $turnNo);
+        $modifierBonus = MvpModifierPool::bonusFor($modifierId);
 
         $baseDamage = match ($action) {
-            self::ACTION_ATTACK => 12,
-            self::ACTION_H1 => 18,
-            self::ACTION_H2 => 10,
+            self::ACTION_ATTACK => 8,
+            self::ACTION_H1 => 12,
+            self::ACTION_H2 => 7,
             self::ACTION_DEFEND => 0,
             default => throw new \InvalidArgumentException('Unsupported action: ' . $action),
         };
@@ -44,17 +47,17 @@ final class CombatEngine
 
         if ($action === self::ACTION_H1 && $attackerCharges > 0) {
             $attackerCharges--;
-            $baseDamage += 6;
+            $baseDamage += 4;
             $chargesDelta = -1;
         }
 
         $mitigation = 0;
         if ($defenderCharges > 0 && $action !== self::ACTION_DEFEND) {
             $defenderCharges--;
-            $mitigation = 5;
+            $mitigation = 4;
         }
 
-        $rawDamage = max(0, $baseDamage + $variance - $mitigation);
+        $rawDamage = max(0, $baseDamage + $variance + $modifierBonus - $mitigation);
         $defenderHp = max(0, $defenderHp - $rawDamage);
         $ended = ($defenderHp <= 0) || ($turnNo >= self::MAX_TURNS);
 
@@ -63,6 +66,11 @@ final class CombatEngine
             'result' => [
                 'damage' => $rawDamage,
                 'chargesDelta' => $chargesDelta,
+                'modifier' => [
+                    'id' => $modifierId,
+                    'trigger' => 'turn_resolved',
+                    'bonus' => $modifierBonus,
+                ],
             ],
             'state' => [
                 'attackerHp' => $attackerHp,
@@ -72,6 +80,18 @@ final class CombatEngine
             ],
             'ended' => $ended,
             'seed' => $seed,
+            'telemetry' => [
+                'eventType' => 'combat.turn.resolved',
+                'matchId' => $matchId,
+                'turnNo' => $turnNo,
+                'modifierId' => $modifierId,
+                'trigger' => 'turn_resolved',
+            ],
         ];
+    }
+
+    public static function estimatedDurationMinutes(int $turns): float
+    {
+        return ($turns * self::TURN_DURATION_SECONDS) / 60.0;
     }
 }

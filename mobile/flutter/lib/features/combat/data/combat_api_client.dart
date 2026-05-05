@@ -115,7 +115,7 @@ class CombatApiClient {
 
     final matchId = enqueue.matchId;
     if (matchId == null || matchId.isEmpty) {
-      throw const StateError('Queue ticket has no matchId yet.');
+      throw StateError('Queue ticket has no matchId yet.');
     }
 
     var clientStateVersion = initialClientStateVersion;

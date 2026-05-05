@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Matchmaking\Application;
 
+use App\Combat\Domain\MvpChampionRoster;
+
 final class EnqueuePlayerHandler
 {
     public function __construct(
@@ -26,6 +28,10 @@ final class EnqueuePlayerHandler
 
         if ($playerId == '' || $championId == '') {
             throw new \InvalidArgumentException('Invalid enqueue payload.');
+        }
+
+        if (!MvpChampionRoster::isValid($championId)) {
+            throw new \InvalidArgumentException('Champion is outside MVP roster.');
         }
 
         if ($queue === 'ranked' && !$this->featureFlags->isEnabled('ranked_enabled')) {

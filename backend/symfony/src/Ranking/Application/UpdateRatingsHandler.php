@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Ranking\Application;
 
+use App\Combat\Domain\MvpChampionRoster;
+
 final class UpdateRatingsHandler
 {
     public function __construct(private RatingsRepository $ratings)
@@ -23,6 +25,10 @@ final class UpdateRatingsHandler
 
         if ($winnerId === '' || $loserId === '' || $winnerChampion === '' || $loserChampion === '') {
             throw new \InvalidArgumentException('Invalid rating payload.');
+        }
+
+        if (!MvpChampionRoster::isValid($winnerChampion) || !MvpChampionRoster::isValid($loserChampion)) {
+            throw new \InvalidArgumentException('Champion is outside MVP roster.');
         }
 
         $winnerGlobal = $this->ratings->load($winnerId, 'global', null);

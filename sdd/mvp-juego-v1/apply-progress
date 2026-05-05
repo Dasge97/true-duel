@@ -1,0 +1,205 @@
+# Apply Progress: mvp-juego-v1
+
+## Mode
+Standard (Strict TDD desactivado segun `sdd/juego/testing-capabilities`).
+
+## Merge de progreso previo
+- Se mergeo el estado acumulado previo de Engram para `spec`, `tasks`, `apply-progress` y `verify-report`.
+- Se mantuvieron las 15 tareas historicas como completadas y se agrego cierre de gaps de verify en bloque.
+
+## Cambios implementados en este bloque
+1. Contratos MVP explicitos de combate:
+   - Nuevo pool fijo de 10 modificadores (`MvpModifierPool`).
+   - Nuevo roster fijo de 4 campeones (`MvpChampionRoster`: assassin, bruiser, control, sustain).
+2. Motor de combate ajustado para cumplimiento de turnos y duracion:
+   - Integracion de modificadores por turno con traza para telemetria.
+   - Ajuste de dano/mitigacion para mantener banda de turnos objetivo.
+3. Guardrails de roster aplicados a flujos competitivos:
+   - `EnqueuePlayerHandler` valida campeon dentro del roster MVP.
+   - `UpdateRatingsHandler` valida campeones MVP para ranking.
+4. Cobertura critica de escenarios verify en backend:
+   - `backend/symfony/tests/run.php` ahora cubre core loop, defensa, economia no-P2W, matchmaking/ranking, onboarding y telemetria/gates.
+5. Cierre de escenarios verify que estaban en UNTESTED:
+   - Nuevo test runtime `champion_fairness_runtime_traceability` con trazabilidad directa a spec:
+     - winrate global por campeon en 48-52,
+     - matchups en 53-57,
+     - muestras minimas (>=1000 por campeon, >=400 por matchup).
+   - Nuevo test runtime `competitive_profile_consistency_runtime` para `GetCompetitiveProfileHandler`:
+     - contrato de salida completo (`playerId`, `accountLevel`, `mmrGlobal`, `mmrByChampion`, `recentMatches`, `nonCombatStats`, `freshnessSeconds`, `isFresh`),
+     - verificacion de frescura <=5 min y stale >5 min.
+6. Refuerzo de pruebas Flutter para reducir PARTIAL criticos en cliente:
+   - caso de fallo cuando enqueue no devuelve `matchId`,
+   - caso de reconcile con `serverStateVersion` en string.
+
+## Estado de tareas
+- [x] 1.1
+- [x] 1.2
+- [x] 1.3
+- [x] 2.1
+- [x] 2.2
+- [x] 2.3
+- [x] 3.1
+- [x] 3.2
+- [x] 3.3
+- [x] 4.1
+- [x] 4.2
+- [x] 4.3
+- [x] 5.1
+- [x] 5.2
+- [x] 5.3
+
+## Evidencia de tests ejecutados (Docker)
+- Backend lint + tests:
+  - `php -l` sobre archivos modificados: PASS.
+  - `php backend/symfony/tests/run.php`: PASS (`mvp_critical_scenarios`).
+- Flutter tests:
+  - `flutter test`: PASS (`combat_api_client_mvp_flow_test.dart`).
+
+### Evidencia final de este cierre (obligatoria por bloque)
+- Backend:
+  - `php -l tests/run.php`: PASS.
+  - `php tests/run.php`: PASS
+    - `[PASS] mvp_critical_scenarios`
+    - `[PASS] champion_fairness_runtime_traceability`
+    - `[PASS] competitive_profile_consistency_runtime`
+- Flutter:
+  - `flutter test`: PASS
+    - `reconcile 409 then enqueue and complete flow`
+    - `throws when enqueue response has no match id`
+    - `accepts conflict authoritative version encoded as string`
+
+## Archivos tocados
+- `backend/symfony/src/Combat/Domain/MvpChampionRoster.php` (nuevo)
+- `backend/symfony/src/Combat/Domain/MvpModifierPool.php` (nuevo)
+- `backend/symfony/src/Combat/Domain/CombatEngine.php` (update)
+- `backend/symfony/src/Matchmaking/Application/EnqueuePlayerHandler.php` (update)
+- `backend/symfony/src/Ranking/Application/UpdateRatingsHandler.php` (update)
+- `backend/symfony/tests/run.php` (rewrite)
+- `mobile/flutter/test/features/combat/data/combat_api_client_mvp_flow_test.dart` (update)
+- `sdd/mvp-juego-v1/tasks` (nuevo/actualizado)
+- `sdd/mvp-juego-v1/apply-progress` (nuevo/actualizado)
+
+## Blockers
+Ninguno en este bloque.
+
+---
+
+## Bloque adicional: cierre de pendientes para PASS limpio
+
+### Objetivo del bloque
+- Cerrar los 2 pendientes exactos del `verify-report`: integracion real Flutter->Symfony en reconcile/fallback y evidencia de `Duración objetivo` con muestra `>=1000`.
+
+### Implementacion realizada
+1. Backend Symfony (integracion real de combate para test E2E ligero):
+   - `POST /v1/matchmaking/enqueue` preserva contrato de fallback:
+     - `ranked` -> `202` sin `matchId`.
+     - `normal` -> `200` con `matchId` real (`match-real-1`).
+   - `POST /v1/matches/{matchId}/turns`:
+     - devuelve `409` + `authoritativeState.serverStateVersion` cuando `clientStateVersion` < servidor,
+     - devuelve `200` al reintentar con version reconciliada.
+   - `POST /v1/matches/{matchId}/complete` devuelve `winner`, `mmr`, `rewards`.
+2. Backend tests (`tests/run.php`):
+   - escenario de core loop subido de 120 a 1000 partidas para `Duración objetivo`.
+   - assert explicito de muestra: `count($turns) == 1000`.
+   - prueba de endpoints MVP ampliada para cubrir ranked fallback, normal match real, 409->200 reconcile y complete.
+3. Flutter tests:
+   - nuevo test real en `combat_api_client_mvp_flow_test.dart` usando `SYM_API_BASE_URL`.
+   - skip controlado cuando no hay env var para no romper CI local.
+   - flujo cubierto en integracion real: login HTTP real, enqueue ranked sin `matchId`, flujo normal con reconcile y `complete`.
+
+### Evidencia ejecutada (Docker)
+- Backend lint + tests:
+  - `php -l src/Api/MvpApiKernel.php && php -l public/index.php && php -l tests/run.php`: PASS.
+  - `php tests/run.php`: PASS
+    - `[PASS] mvp_critical_scenarios`
+    - `[PASS] champion_fairness_runtime_traceability`
+    - `[PASS] competitive_profile_consistency_runtime`
+    - `[PASS] mvp_api_kernel_endpoints`
+- Flutter analyze + tests:
+  - `flutter analyze`: PASS.
+  - `flutter test`: PASS (test de integracion real aparece como skip controlado sin env).
+- Corrida real Flutter->Symfony en Docker (red compartida):
+  - servidor Symfony: `php -S 0.0.0.0:8080 -t public` en contenedor `php:8.2-cli`.
+  - Flutter test con `SYM_API_BASE_URL=http://symfony-int:8080`.
+  - Resultado: PASS de `real integration flutter -> symfony: ranked fallback + normal reconcile + complete`.
+
+### Archivos tocados en este bloque
+- `backend/symfony/src/Api/MvpApiKernel.php` (update: turns/complete endpoints y estado de match)
+- `backend/symfony/tests/run.php` (update: muestra >=1000 + cobertura reconcile/fallback)
+- `mobile/flutter/test/features/combat/data/combat_api_client_mvp_flow_test.dart` (update: test de integracion real con env)
+- `sdd/mvp-juego-v1/tasks` (update: checklist cierre PASS limpio)
+- `sdd/mvp-juego-v1/apply-progress` (este update)
+
+---
+
+## Bloque adicional: MVP Flutter jugable + APK debug readiness
+
+### Merge de artefactos previo
+- Se leyeron y mergearon `tasks`, `apply-progress` y `verify-report` existentes en `sdd/mvp-juego-v1/`.
+- `spec` y `design` no estan presentes como archivos locales en este workspace; se continuo con evidencia y constraints de `tasks/verify-report` para cierre MVP ejecutable.
+
+### Implementacion realizada (prioridad playable MVP)
+1. Se completo el flujo jugable end-to-end en Flutter:
+   - `StartScreen` (modo + seleccion de campeon),
+   - `QueueAndStartScreen`,
+   - `OfflineCombatScreen` por turnos,
+   - `ResultScreen` con recompensas.
+2. Se implemento fallback offline/local battle mode y toggle de modo API:
+   - Config via `GameModeConfig` con `defaultMode=offline`.
+   - Soporte `--dart-define=API_BASE_URL` y `--dart-define=API_TOKEN`.
+3. Se conectaron requisitos MVP de combate local:
+   - roster fijo de 4 campeones,
+   - pool de 10 modificadores,
+   - defensa con cargas (max 2, mitigacion y consumo),
+   - recompensas basicas post-match visibles.
+4. Se scaffoldizo proyecto Flutter completo (android/ios/etc.) para permitir build de APK debug instalable.
+5. Se actualizo `README.md` raiz con pasos exactos de run local + comando de APK debug + ruta esperada del APK.
+
+### Archivos tocados en este bloque
+- `mobile/flutter/lib/main.dart` (rewrite completo del flujo MVP jugable)
+- `mobile/flutter/lib/config/game_mode_config.dart` (nuevo)
+- `mobile/flutter/lib/features/combat/domain/local_battle_engine.dart` (nuevo)
+- `mobile/flutter/test/widget_test.dart` (ajuste smoke test al nuevo flujo)
+- `mobile/flutter/android/**` (scaffold generado para build Android)
+- `README.md` (actualizado con ejecucion y APK debug)
+- `sdd/mvp-juego-v1/tasks` (merge estado + cierre MVP Flutter)
+- `sdd/mvp-juego-v1/apply-progress` (este update)
+
+---
+
+## Bloque adicional: Integracion API real MVP + fallback bot explicito
+
+### Implementacion realizada
+1. Backend API MVP real (sin framework full, kernel HTTP minimo):
+   - `POST /v1/auth/login` emite token mock JWT-like (`mvp.<payload>.sig`).
+   - `GET /v1/profile`, `GET /v1/ranking`, `GET /v1/users`, `GET /v1/history` con auth bearer.
+   - `POST /v1/matchmaking/enqueue` devuelve `202` sin `matchId` para `ranked` y forzar fallback bot controlado.
+   - Contrato de error consistente: `{ "error": { "code", "message" } }`.
+2. Frontend Flutter conectado a API real con fallback razonable:
+   - Nuevo repositorio HTTP `MvpApiRepository` para auth/profile/ranking/users/history/enqueue.
+   - `LoginScreen` intenta auth real en modo API y cae a offline si falla.
+   - `Profile/Ranking/Users/History` consumen API real cuando aplica y hacen fallback local silencioso ante error.
+3. Match flow:
+   - Se mantiene local/offline como principal.
+   - Nuevo `QueueAndModeScreen` explicita: si no hay match real (`matchId` ausente) -> arranca bot fallback.
+
+### Evidencia de validacion por bloque
+- Backend (Docker):
+  - `php -l src/Api/MvpApiKernel.php && php -l public/index.php && php -l tests/run.php`: PASS.
+  - `php tests/run.php`: PASS
+    - `[PASS] mvp_critical_scenarios`
+    - `[PASS] champion_fairness_runtime_traceability`
+    - `[PASS] competitive_profile_consistency_runtime`
+    - `[PASS] mvp_api_kernel_endpoints`
+- Flutter (Docker):
+  - `flutter analyze`: PASS (No issues found).
+  - `flutter test`: PASS (4 tests totales).
+
+### Archivos tocados en este bloque
+- `backend/symfony/src/Api/MvpApiKernel.php` (nuevo)
+- `backend/symfony/public/index.php` (nuevo)
+- `backend/symfony/tests/run.php` (update, agrega test de endpoints MVP)
+- `mobile/flutter/lib/features/mvp/data/mvp_api_repository.dart` (nuevo)
+- `mobile/flutter/lib/main.dart` (update grande: auth real, pantallas API, fallback bot)
+- `sdd/mvp-juego-v1/tasks` (update)
+- `sdd/mvp-juego-v1/apply-progress` (este update)
