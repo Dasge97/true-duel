@@ -1,6 +1,6 @@
 # True Duel
 
-MVP jugable de combate 1v1 por turnos con flujo completo en Flutter y fallback offline local cuando la API no esta disponible.
+MVP jugable de combate 1v1 por turnos con flujo API-first (sin fallback offline/mock en la app).
 
 ## Estado MVP
 
@@ -9,7 +9,7 @@ MVP jugable de combate 1v1 por turnos con flujo completo en Flutter y fallback o
 - Pool MVP de 10 modificadores aplicables en partida (se seleccionan 3 por combate).
 - Defensa con cargas jugable (acumula hasta 2 y mitiga golpes siguientes).
 - Recompensas post-partida visibles (monedas, gemas y delta MMR).
-- Modo API con fallback recomendado a modo offline para pruebas locales.
+- Flujo mobile conectado al backend local (Docker) para estado real de juego.
 
 ## Ejecutar local (Flutter)
 
@@ -25,16 +25,80 @@ flutter pub get
 flutter run
 ```
 
-Por defecto arranca en modo `Offline local` (jugable sin backend).
+La app necesita API disponible para login/juego.
 
-### Forzar modo API
+## Backend + BD local con Docker (recomendado)
 
-Si quieres usar backend real/simulado, lanza con defines:
+Requisitos:
+- Docker Desktop activo.
+
+Desde la raiz del repo:
+
+```bash
+docker compose up -d
+```
+
+Servicios:
+- API: `http://localhost:8080`
+- Healthcheck API: `http://localhost:8080/health`
+- PostgreSQL: `localhost:5432` (db/user/pass: `true_duel`)
+
+El contenedor API inicializa esquema base y crea usuarios seed:
+- `playerone` / `123456`
+- `raven` / `123456`
+- `nova` / `123456`
+
+Notas backend actuales:
+- `POST /v1/matchmaking/enqueue` soporta `vsBot=true` para cola ranked de pruebas sin rival humano.
+- `GET /v1/matchmaking/tickets/{ticketId}` permite consultar estado de ticket en cola ranked.
+- `GET /v1/matches/{matchId}` devuelve estado del match para jugadores participantes.
+- `POST /v1/matches/{id}/complete` es idempotente (si llamas dos veces, no duplica recompensas/MMR).
+- `POST /v1/matchmaking/enqueue` con `queue=ranked` sin `vsBot` ya empareja jugadores reales por ventana MMR en la misma region.
+- Los turnos PvP ranked se resuelven por turnos alternos (`currentPlayerId` en estado).
+- En matches PvP, ambos jugadores pueden llamar a `POST /v1/matches/{id}/complete` y reciben su liquidacion propia (MMR/recompensas) de forma idempotente.
+- Perfil incluye progresion real (`level`, `experienceTotal`, `experienceToNextLevel`) y economia (`coins`, `gems`).
+- Sistema de campeones disponible:
+  - `GET /v1/champions/catalog`
+  - `GET /v1/champions/me`
+  - `POST /v1/champions/unlock`
+  - `POST /v1/champions/select`
+- Sistema de tienda cosmética:
+  - `GET /v1/store/catalog`
+  - `GET /v1/store/inventory`
+  - `POST /v1/store/purchase`
+  - `POST /v1/store/equip`
+- Sistema de misiones diarias:
+  - `GET /v1/missions/daily`
+  - `POST /v1/missions/claim`
+- Reglas de recompensas/MMR de partida en BD (`match_outcome_rules`) para no hardcodear economía.
+
+### Reset de datos base de producto (1 comando)
+
+Si quieres limpiar datos de pruebas y dejar un baseline mínimo jugable (usuarios/items/misiones):
+
+```bash
+docker exec true-duel-api php scripts/reset_product_seed.php
+```
+
+Para parar:
+
+```bash
+docker compose down
+```
+
+### Ejecutar app contra API local
+
+Lanza con:
 
 ```bash
 cd mobile/flutter
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080 --dart-define=API_TOKEN=dev-token
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
+
+Credenciales seed para login API:
+- `playerone` / `123456`
+- `raven` / `123456`
+- `nova` / `123456`
 
 ## Generar APK debug (instalable)
 
@@ -62,9 +126,8 @@ flutter analyze
 flutter test
 ```
 
-Backend de contratos MVP:
+Integracion API end-to-end (requiere `docker compose up -d`):
 
 ```bash
-cd backend/symfony
-php tests/run.php
+php backend/symfony/tests/api_contracts_integration.php
 ```

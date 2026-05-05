@@ -1,0 +1,42 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Entity;
+
+final class User
+{
+    public function __construct(
+        private string $id,
+        private string $username,
+        private string $email,
+        private string $passwordHash,
+        private string $createdAt,
+    ) {
+    }
+
+    public function id(): string
+    {
+        return $this->id;
+    }
+
+    public function username(): string
+    {
+        return $this->username;
+    }
+
+    public function email(): string
+    {
+        return $this->email;
+    }
+
+    public function passwordHash(): string
+    {
+        return $this->passwordHash;
+    }
+
+    public function createdAt(): string
+    {
+        return $this->createdAt;
+    }
+}

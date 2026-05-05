@@ -7,7 +7,8 @@ void main() {
     await tester.pumpWidget(const JuegoMvpApp());
 
     expect(find.text('TRUE DUEL'), findsOneWidget);
-    expect(find.text('Login rapido para entrar al duelo'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
+    expect(find.text('Register'), findsOneWidget);
     expect(find.text('Entrar'), findsOneWidget);
   });
 }

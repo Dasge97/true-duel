@@ -1,0 +1,121 @@
+Diseña una interfaz completa para un juego móvil competitivo 1v1 por turnos (MVP), y hazlo con enfoque de sistema: primero una base funcional sólida y luego 5 variaciones visuales completas que se puedan alternar por pestañas.
+OBJETIVO PRINCIPAL
+1) Generar una BASE MAESTRA de UX/UI (estructura, flujos, jerarquía, componentes, spacing, estados).
+2) A partir de esa base, crear 5 MODELOS VISUALES diferentes del MISMO producto.
+3) Permitir comparar en Figma cada modelo mediante pestañas/tabs de variantes (sin rediseñar el flujo, solo cambiando dirección visual completa).
+IMPORTANTE
+- La arquitectura de pantallas, componentes y navegación debe ser la misma en los 5 modelos.
+- Lo que cambia entre modelos: paleta, tipografía, estilo de componentes, iconografía, ilustración, fondos, motion style, personalidad visual.
+- Mantener consistencia de usabilidad y accesibilidad en todos.
+- Idioma UI: español.
+- Plataforma: mobile-first (iPhone 14/15 390x844 y Android 412x915).
+CONTEXTO DEL JUEGO
+- Juego competitivo 1v1 por turnos.
+- Combates cortos (3-5 minutos).
+- Mecánicas clave: ataque, defensa táctica, gestión de “Cargas”.
+- Modos: casual y ranked.
+- Ranking de cuenta y ranking por personaje.
+- Economía sin pay-to-win (tienda solo cosmética).
+ENTREGA EN FIGMA (OBLIGATORIA)
+Crea 3 páginas:
+A) “00_Base_System”
+- Tokens globales (espaciado, radios, grid, tamaños).
+- Componentes funcionales comunes.
+- Flujos UX definitivos.
+- Estados y edge cases.
+B) “01_Visual_Models”
+- Un selector de pestañas/tabs superior con 5 opciones:
+  - Modelo A
+  - Modelo B
+  - Modelo C
+  - Modelo D
+  - Modelo E
+- Cada pestaña muestra el MISMO set de pantallas, pero con identidad visual completamente distinta.
+C) “02_Prototype_Compare”
+- Prototipo navegable para comparar modelos.
+- Interacciones de cambio de pestaña entre A/B/C/D/E.
+- Notas de decisión visual y tradeoffs por modelo.
+PANTALLAS MÍNIMAS (las mismas en cada modelo)
+1. Splash + Login
+2. Lobby/Home
+3. Selección de campeón
+4. Matchmaking
+5. Combate (pantalla core)
+6. Resultado de partida
+7. Ranked/Ladder (global + por personaje)
+8. Perfil
+9. Recompensas/Misiones
+10. Tienda cosmética
+COMPONENTES BASE (REUTILIZABLES)
+- Botones: primario/secundario/ghost/peligro (default, pressed, disabled, loading).
+- Barras: vida, cargas/energía, progreso de rango, progreso de misión.
+- Chips de estado: “Cargas +1”, “Bloqueo activo”, “Debuff”, “Ventaja”.
+- Card de campeón.
+- Card de recompensa.
+- Modal universal (confirmación/error/info).
+- Bottom navigation (Inicio, Jugar, Campeones, Tienda, Perfil).
+- Turn timer circular + numérico.
+- Panel historial de turnos.
+ESTADOS Y EDGE CASES (en base + replicados en los 5 modelos)
+- Sin energía/cargas.
+- Timeout de turno.
+- Rival desconectado.
+- Reconexión.
+- Error de red (reintentar).
+- Inventario vacío tienda/recompensas.
+REGLAS DE CONSISTENCIA
+- No modificar arquitectura UX entre modelos.
+- No mover CTA críticos de posición entre modelos.
+- No cambiar copy funcional clave.
+- Mantener legibilidad, contraste y zonas de pulgar.
+- Misma densidad de información en los 5 modelos.
+MODELOS VISUALES (5 DIRECCIONES OBLIGATORIAS)
+MODELO A — “Táctico Sci‑Fi Limpio”
+- Fondo: azul petróleo/grafito, acentos cian/ámbar.
+- Sensación: precisión, control, competitivo premium.
+- Tipos sugeridas: Space Grotesk + Manrope.
+MODELO B — “Arcade Energético”
+- Fondo más vibrante, alto contraste, energía visual.
+- Formas más redondeadas, feedback más explosivo.
+- Sensación: ritmo, impacto, velocidad.
+MODELO C — “Neo Militar Minimal”
+- Tonos sobrios, interfaz robusta y técnica.
+- Estética de HUD táctico.
+- Sensación: disciplina, lectura estratégica.
+MODELO D — “Fantasy Tech Elegante”
+- Mezcla de místico + tecnología limpia, sin recargar.
+- Jerarquía suave con ornamentos mínimos.
+- Sensación: épico refinado.
+MODELO E — “Esports Broadcast”
+- Inspirado en overlays de retransmisión competitiva.
+- Data-first, modular, claro para lectura rápida.
+- Sensación: torneo profesional.
+TAB SYSTEM (REQUISITO CLAVE)
+- Implementa un componente de pestañas visible en la parte superior de la página de comparación:
+  - Tab A | Tab B | Tab C | Tab D | Tab E
+- Al cambiar de pestaña:
+  - Se actualiza TODO el aspecto visual del set de pantallas.
+  - Se mantiene estructura, contenido y componentes funcionales.
+- Las pestañas deben permitir evaluación visual inmediata lado a lado (mismo frame por modelo).
+MOTION & INTERACCIÓN
+- Añadir notas de motion en pantallas clave:
+  - entrada de combate
+  - impacto/bloqueo
+  - victoria/derrota
+  - subida de rango
+- Definir velocidad y tono de animación por modelo (ej. más seco en C, más dinámico en B).
+ONBOARDING (INCLUIR EN BASE Y MODELOS)
+- Tutorial guiado primeras 3 partidas:
+  1. Turnos
+  2. Defensa táctica
+  3. Gestión de Cargas
+- Mensajes breves y contextuales con progreso 1/3, 2/3, 3/3.
+CRITERIOS DE CALIDAD
+- Cada modelo debe ser claramente diferente a simple vista.
+- Ningún modelo puede parecer “template genérico”.
+- Debe sentirse videojuego competitivo móvil, no app corporativa.
+- Mantener consistencia de sistema de diseño y viabilidad de implementación.
+SALIDA FINAL
+- Entregar base + 5 modelos + prototipo de comparación por pestañas.
+- Incluir mini tabla final “Pros / Contras / Riesgo de implementación” para cada modelo.
+- Marcar recomendación final de modelo principal para MVP y modelo secundario de respaldo.

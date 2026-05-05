@@ -8,8 +8,32 @@ class MvpApiRepository {
   final String baseUrl;
   final http.Client _httpClient;
 
-  Future<LoginResult> login(String playerName) async {
-    final res = await _post('/v1/auth/login', body: {'name': playerName});
+  Future<LoginResult> login({
+    required String username,
+    required String password,
+  }) async {
+    final res = await _post(
+      '/v1/auth/login',
+      body: {'username': username, 'password': password},
+    );
+    return LoginResult.fromJson(res);
+  }
+
+  Future<LoginResult> register({
+    required String username,
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    final res = await _post(
+      '/v1/auth/register',
+      body: {
+        'username': username,
+        'email': email,
+        'password': password,
+        'displayName': displayName,
+      },
+    );
     return LoginResult.fromJson(res);
   }
 
@@ -36,9 +60,57 @@ class MvpApiRepository {
     return items.map((e) => HistoryEntry.fromJson(e as Map<String, dynamic>)).toList(growable: false);
   }
 
-  Future<EnqueueResult> enqueue(String token, String queue, String championId) async {
-    final res = await _post('/v1/matchmaking/enqueue', token: token, body: {'queue': queue, 'championId': championId});
+  Future<EnqueueResult> enqueue(String token, String queue, String championId, {bool vsBot = false}) async {
+    final res = await _post('/v1/matchmaking/enqueue', token: token, body: {'queue': queue, 'championId': championId, 'vsBot': vsBot});
     return EnqueueResult.fromJson(res);
+  }
+
+  Future<Map<String, dynamic>> match(String token, String matchId) async {
+    return _get('/v1/matches/$matchId', token: token);
+  }
+
+  Future<Map<String, dynamic>> resolveTurn(String token, String matchId, String action, int clientStateVersion) async {
+    return _post('/v1/matches/$matchId/turns', token: token, body: {'action': action, 'clientStateVersion': clientStateVersion});
+  }
+
+  Future<Map<String, dynamic>> completeMatch(String token, String matchId) async {
+    return _post('/v1/matches/$matchId/complete', token: token, body: const {});
+  }
+
+  Future<List<ChampionCatalogEntry>> championCatalog(String token) async {
+    final res = await _get('/v1/champions/catalog', token: token);
+    final items = (res['champions'] as List<dynamic>? ?? const []);
+    return items.map((e) => ChampionCatalogEntry.fromJson(e as Map<String, dynamic>)).toList(growable: false);
+  }
+
+  Future<void> unlockChampion(String token, String championId) async {
+    await _post('/v1/champions/unlock', token: token, body: {'championId': championId});
+  }
+
+  Future<void> selectChampion(String token, String championId) async {
+    await _post('/v1/champions/select', token: token, body: {'championId': championId});
+  }
+
+  Future<StoreCatalogResult> storeCatalog(String token) async {
+    final res = await _get('/v1/store/catalog', token: token);
+    return StoreCatalogResult.fromJson(res);
+  }
+
+  Future<void> purchaseItem(String token, String itemId) async {
+    await _post('/v1/store/purchase', token: token, body: {'itemId': itemId});
+  }
+
+  Future<void> equipItem(String token, String itemId) async {
+    await _post('/v1/store/equip', token: token, body: {'itemId': itemId});
+  }
+
+  Future<DailyMissionsResult> dailyMissions(String token) async {
+    final res = await _get('/v1/missions/daily', token: token);
+    return DailyMissionsResult.fromJson(res);
+  }
+
+  Future<void> claimMission(String token, String missionId) async {
+    await _post('/v1/missions/claim', token: token, body: {'missionId': missionId});
   }
 
   Future<Map<String, dynamic>> _get(String path, {required String token}) async {
@@ -70,7 +142,7 @@ class LoginResult {
 
   factory LoginResult.fromJson(Map<String, dynamic> json) {
     final user = json['user'] as Map<String, dynamic>? ?? const {};
-    return LoginResult(token: json['token'] as String? ?? '', playerId: user['playerId'] as String? ?? '', name: user['name'] as String? ?? 'Player');
+    return LoginResult(token: json['token'] as String? ?? '', playerId: user['playerId'] as String? ?? '', name: user['name'] as String? ?? '');
   }
 
   final String token;
@@ -79,27 +151,60 @@ class LoginResult {
 }
 
 class ProfileResult {
-  ProfileResult({required this.name, required this.rank, required this.mmr});
+  ProfileResult({
+    required this.name,
+    required this.rank,
+    required this.mmr,
+    required this.level,
+    required this.experienceTotal,
+    required this.experienceToNextLevel,
+    required this.coins,
+    required this.gems,
+    required this.matches,
+    required this.wins,
+    required this.losses,
+  });
 
   factory ProfileResult.fromJson(Map<String, dynamic> json) {
-    return ProfileResult(name: json['name'] as String? ?? 'Player', rank: json['rank'] as String? ?? 'Unranked', mmr: json['mmrGlobal'] as int? ?? 1000);
+    final stats = json['stats'] as Map<String, dynamic>? ?? const {};
+    return ProfileResult(
+      name: json['name'] as String? ?? '',
+      rank: json['rank'] as String? ?? '',
+      mmr: json['mmrGlobal'] as int? ?? 0,
+      level: json['level'] as int? ?? 0,
+      experienceTotal: json['experienceTotal'] as int? ?? 0,
+      experienceToNextLevel: json['experienceToNextLevel'] as int? ?? 0,
+      coins: json['coins'] as int? ?? 0,
+      gems: json['gems'] as int? ?? 0,
+      matches: stats['matches'] as int? ?? 0,
+      wins: stats['wins'] as int? ?? 0,
+      losses: stats['losses'] as int? ?? 0,
+    );
   }
 
   final String name;
   final String rank;
   final int mmr;
+  final int level;
+  final int experienceTotal;
+  final int experienceToNextLevel;
+  final int coins;
+  final int gems;
+  final int matches;
+  final int wins;
+  final int losses;
 }
 
 class RankingEntry {
   const RankingEntry({required this.name, required this.mmr});
-  factory RankingEntry.fromJson(Map<String, dynamic> json) => RankingEntry(name: json['name'] as String? ?? 'Unknown', mmr: json['mmr'] as int? ?? 0);
+  factory RankingEntry.fromJson(Map<String, dynamic> json) => RankingEntry(name: json['name'] as String? ?? '', mmr: json['mmr'] as int? ?? 0);
   final String name;
   final int mmr;
 }
 
 class UserEntry {
   const UserEntry({required this.name, required this.mmr});
-  factory UserEntry.fromJson(Map<String, dynamic> json) => UserEntry(name: json['name'] as String? ?? 'Unknown', mmr: json['mmr'] as int? ?? 0);
+  factory UserEntry.fromJson(Map<String, dynamic> json) => UserEntry(name: json['name'] as String? ?? '', mmr: json['mmr'] as int? ?? 0);
   final String name;
   final int mmr;
 }
@@ -107,8 +212,8 @@ class UserEntry {
 class HistoryEntry {
   const HistoryEntry({required this.result, required this.enemy, required this.turns, required this.mmrDelta});
   factory HistoryEntry.fromJson(Map<String, dynamic> json) => HistoryEntry(
-    result: json['result'] as String? ?? 'unknown',
-    enemy: json['enemy'] as String? ?? 'Unknown',
+    result: json['result'] as String? ?? '',
+    enemy: json['enemy'] as String? ?? '',
     turns: json['turns'] as int? ?? 0,
     mmrDelta: json['mmrDelta'] as int? ?? 0,
   );
@@ -130,6 +235,151 @@ class EnqueueResult {
   final String ticketId;
   final int etaSec;
   final String? matchId;
+}
+
+class ChampionCatalogEntry {
+  const ChampionCatalogEntry({
+    required this.id,
+    required this.name,
+    required this.role,
+    required this.owned,
+    required this.selected,
+    required this.priceCoins,
+    required this.masteryLevel,
+    required this.masteryXp,
+    required this.mmr,
+  });
+
+  factory ChampionCatalogEntry.fromJson(Map<String, dynamic> json) => ChampionCatalogEntry(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    role: json['role'] as String? ?? '',
+    owned: json['owned'] as bool? ?? false,
+    selected: json['selected'] as bool? ?? false,
+    priceCoins: json['priceCoins'] as int? ?? 0,
+    masteryLevel: json['masteryLevel'] as int? ?? 1,
+    masteryXp: json['masteryXp'] as int? ?? 0,
+    mmr: json['mmr'] as int? ?? 1000,
+  );
+
+  final String id;
+  final String name;
+  final String role;
+  final bool owned;
+  final bool selected;
+  final int priceCoins;
+  final int masteryLevel;
+  final int masteryXp;
+  final int mmr;
+}
+
+class StoreCatalogResult {
+  const StoreCatalogResult({required this.wallet, required this.items});
+
+  factory StoreCatalogResult.fromJson(Map<String, dynamic> json) {
+    final walletJson = json['wallet'] as Map<String, dynamic>? ?? const {};
+    final itemsJson = json['items'] as List<dynamic>? ?? const [];
+    return StoreCatalogResult(
+      wallet: Wallet.fromJson(walletJson),
+      items: itemsJson.map((e) => StoreItem.fromJson(e as Map<String, dynamic>)).toList(growable: false),
+    );
+  }
+
+  final Wallet wallet;
+  final List<StoreItem> items;
+}
+
+class Wallet {
+  const Wallet({required this.coins, required this.gems});
+  factory Wallet.fromJson(Map<String, dynamic> json) => Wallet(
+    coins: json['coins'] as int? ?? 0,
+    gems: json['gems'] as int? ?? 0,
+  );
+  final int coins;
+  final int gems;
+}
+
+class StoreItem {
+  const StoreItem({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.priceCoins,
+    required this.owned,
+    required this.quantity,
+    required this.equipped,
+  });
+
+  factory StoreItem.fromJson(Map<String, dynamic> json) => StoreItem(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    type: json['type'] as String? ?? '',
+    priceCoins: json['priceCoins'] as int? ?? 0,
+    owned: json['owned'] as bool? ?? false,
+    quantity: json['quantity'] as int? ?? 0,
+    equipped: json['equipped'] as bool? ?? false,
+  );
+
+  final String id;
+  final String name;
+  final String type;
+  final int priceCoins;
+  final bool owned;
+  final int quantity;
+  final bool equipped;
+}
+
+class DailyMissionsResult {
+  const DailyMissionsResult({required this.date, required this.completed, required this.total, required this.missions});
+
+  factory DailyMissionsResult.fromJson(Map<String, dynamic> json) {
+    final summary = json['summary'] as Map<String, dynamic>? ?? const {};
+    final missionsJson = json['missions'] as List<dynamic>? ?? const [];
+    return DailyMissionsResult(
+      date: json['date'] as String? ?? '',
+      completed: summary['completed'] as int? ?? 0,
+      total: summary['total'] as int? ?? 0,
+      missions: missionsJson.map((e) => DailyMission.fromJson(e as Map<String, dynamic>)).toList(growable: false),
+    );
+  }
+
+  final String date;
+  final int completed;
+  final int total;
+  final List<DailyMission> missions;
+}
+
+class DailyMission {
+  const DailyMission({
+    required this.missionId,
+    required this.title,
+    required this.target,
+    required this.progress,
+    required this.rewardXp,
+    required this.rewardCoins,
+    required this.claimed,
+    required this.completed,
+  });
+
+  factory DailyMission.fromJson(Map<String, dynamic> json) => DailyMission(
+    missionId: json['missionId'] as String? ?? '',
+    title: json['title'] as String? ?? '',
+    target: json['target'] as int? ?? 1,
+    progress: json['progress'] as int? ?? 0,
+    rewardXp: json['rewardXp'] as int? ?? 0,
+    rewardCoins: json['rewardCoins'] as int? ?? 0,
+    claimed: json['claimed'] as bool? ?? false,
+    completed: json['completed'] as bool? ?? false,
+  );
+
+  final String missionId;
+  final String title;
+  final int target;
+  final int progress;
+  final int rewardXp;
+  final int rewardCoins;
+  final bool claimed;
+  final bool completed;
 }
 
 class MvpApiException implements Exception {

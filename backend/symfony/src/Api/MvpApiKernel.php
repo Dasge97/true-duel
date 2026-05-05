@@ -4,55 +4,118 @@ declare(strict_types=1);
 
 namespace App\Api;
 
-use App\Combat\Domain\MvpChampionRoster;
+use App\Controller\Api\AuthController;
+use App\Controller\Api\ChampionController;
+use App\Controller\Api\GameplayController;
+use App\Controller\Api\MissionController;
+use App\Controller\Api\ProfileController;
+use App\Controller\Api\StoreController;
+use App\Repository\ChampionRatingRepository;
+use App\Repository\GameMatchRepository;
+use App\Repository\MatchHistoryRepository;
+use App\Repository\MatchOutcomeRuleRepository;
+use App\Repository\MissionCatalogRepository;
+use App\Repository\MatchSettlementRepository;
+use App\Repository\MatchmakingTicketRepository;
+use App\Repository\ChampionCatalogRepository;
+use App\Repository\PlayerChampionRepository;
+use App\Repository\PlayerInventoryRepository;
+use App\Repository\PlayerMissionRepository;
+use App\Repository\PlayerProfileRepository;
+use App\Repository\StoreCatalogRepository;
+use App\Repository\TurnRepository;
+use App\Repository\UserRepository;
+use App\Service\AuthService;
+use App\Service\ChampionService;
+use App\Service\GameplayService;
+use App\Service\MissionService;
+use App\Service\ProfileService;
+use App\Service\StoreService;
+use App\Service\TokenService;
+use PDO;
+use Throwable;
 
 final class MvpApiKernel
 {
-    /** @var array<string, array<string, mixed>> */
-    private array $users;
-
-    /** @var array<string, list<array<string, mixed>>> */
-    private array $history;
-
-    /** @var list<array<string, mixed>> */
-    private array $ranking;
-
-    /** @var array<string, array<string, mixed>> */
-    private array $matches;
+    private ?PDO $pdo;
+    private TokenService $tokenService;
+    private ?AuthController $authController = null;
+    private ?ChampionController $championController = null;
+    private ?StoreController $storeController = null;
+    private ?MissionController $missionController = null;
+    private ?ProfileController $profileController = null;
+    private ?GameplayController $gameplayController = null;
 
     public function __construct()
     {
-        $this->users = [
-            'p1' => ['playerId' => 'p1', 'name' => 'Player One', 'rank' => 'Silver II', 'mmr' => 1210, 'region' => 'eu-west'],
-            'p2' => ['playerId' => 'p2', 'name' => 'Raven', 'rank' => 'Gold I', 'mmr' => 1450, 'region' => 'eu-west'],
-            'p3' => ['playerId' => 'p3', 'name' => 'Nova', 'rank' => 'Gold II', 'mmr' => 1410, 'region' => 'eu-west'],
-        ];
-        $this->ranking = [
-            ['playerId' => 'p2', 'name' => 'Raven', 'mmr' => 1450],
-            ['playerId' => 'p3', 'name' => 'Nova', 'mmr' => 1410],
-            ['playerId' => 'p1', 'name' => 'Player One', 'mmr' => 1210],
-        ];
-        $this->history = [
-            'p1' => [
-                ['matchId' => 'm-100', 'result' => 'win', 'enemy' => 'Raven', 'turns' => 8, 'mmrDelta' => 11],
-                ['matchId' => 'm-099', 'result' => 'loss', 'enemy' => 'Nova', 'turns' => 10, 'mmrDelta' => -7],
-            ],
-        ];
-        $this->matches = [
-            'match-real-1' => [
-                'serverStateVersion' => 3,
-                'winner' => 'p1',
-                'mmr' => ['globalDelta' => 11, 'championDelta' => 9],
-                'rewards' => ['coins' => 100, 'gems' => 0],
-            ],
-        ];
+        $this->pdo = $this->connectDb();
+        $this->tokenService = new TokenService();
+
+        if ($this->pdo !== null) {
+            $userRepository = new UserRepository($this->pdo);
+            $profileRepository = new PlayerProfileRepository($this->pdo);
+            $championCatalogRepository = new ChampionCatalogRepository($this->pdo);
+            $storeCatalogRepository = new StoreCatalogRepository($this->pdo);
+            $missionCatalogRepository = new MissionCatalogRepository($this->pdo);
+            $playerChampionRepository = new PlayerChampionRepository($this->pdo, $championCatalogRepository);
+            $playerInventoryRepository = new PlayerInventoryRepository($this->pdo);
+            $playerMissionRepository = new PlayerMissionRepository($this->pdo, $missionCatalogRepository);
+            $historyRepository = new MatchHistoryRepository($this->pdo);
+            $matchOutcomeRuleRepository = new MatchOutcomeRuleRepository($this->pdo);
+            $matchRepository = new GameMatchRepository($this->pdo);
+            $ticketRepository = new MatchmakingTicketRepository($this->pdo);
+            $turnRepository = new TurnRepository($this->pdo);
+            $championRatingRepository = new ChampionRatingRepository($this->pdo);
+            $matchSettlementRepository = new MatchSettlementRepository($this->pdo);
+
+            $authService = new AuthService(
+                $this->pdo,
+                $userRepository,
+                $profileRepository,
+                $playerChampionRepository,
+                $this->tokenService,
+            );
+            $championService = new ChampionService($this->pdo, $playerChampionRepository, $profileRepository, $championCatalogRepository);
+            $storeService = new StoreService($this->pdo, $profileRepository, $playerInventoryRepository, $storeCatalogRepository);
+            $missionService = new MissionService($this->pdo, $profileRepository, $playerMissionRepository, $missionCatalogRepository);
+            $profileService = new ProfileService($profileRepository, $historyRepository, $championRatingRepository);
+            $gameplayService = new GameplayService(
+                $this->pdo,
+                $matchRepository,
+                $ticketRepository,
+                $turnRepository,
+                $historyRepository,
+                $profileRepository,
+                $playerChampionRepository,
+                $playerMissionRepository,
+                $championCatalogRepository,
+                $matchOutcomeRuleRepository,
+                $championRatingRepository,
+                $matchSettlementRepository,
+            );
+
+            $this->authController = new AuthController($authService);
+            $this->championController = new ChampionController($championService);
+            $this->storeController = new StoreController($storeService);
+            $this->missionController = new MissionController($missionService);
+            $this->profileController = new ProfileController($profileService);
+            $this->gameplayController = new GameplayController($gameplayService);
+        }
     }
 
     /** @param array<string, string> $headers */
     public function handle(string $method, string $path, array $headers = [], ?array $body = null): array
     {
+        if ($this->pdo === null) {
+            return $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'POST' && $path === '/v1/auth/register') {
+            return $this->authController?->register($body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
         if ($method === 'POST' && $path === '/v1/auth/login') {
-            return $this->login($body ?? []);
+            return $this->authController?->login($body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'GET' && $path === '/v1/ranking') {
@@ -60,7 +123,7 @@ final class MvpApiKernel
             if (isset($auth['status'])) {
                 return $auth;
             }
-            return ['status' => 200, 'data' => ['ranking' => $this->ranking]];
+            return $this->profileController?->ranking() ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'GET' && $path === '/v1/users') {
@@ -68,7 +131,7 @@ final class MvpApiKernel
             if (isset($auth['status'])) {
                 return $auth;
             }
-            return ['status' => 200, 'data' => ['users' => array_values($this->users)]];
+            return $this->profileController?->users() ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'GET' && $path === '/v1/profile') {
@@ -76,81 +139,146 @@ final class MvpApiKernel
             if (isset($auth['status'])) {
                 return $auth;
             }
-            $playerId = (string) ($auth['playerId'] ?? '');
-            return $this->profile($playerId);
+            return $this->profileController?->profile((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'GET' && $path === '/v1/champions/catalog') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->championController?->catalog((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'GET' && $path === '/v1/champions/me') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->championController?->mine((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'GET' && $path === '/v1/store/catalog') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->storeController?->catalog((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'GET' && $path === '/v1/store/inventory') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->storeController?->inventory((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'POST' && $path === '/v1/store/purchase') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->storeController?->purchase((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'POST' && $path === '/v1/store/equip') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->storeController?->equip((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'GET' && $path === '/v1/missions/daily') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->missionController?->daily((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'POST' && $path === '/v1/missions/claim') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->missionController?->claim((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'POST' && $path === '/v1/champions/unlock') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->championController?->unlock((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'POST' && $path === '/v1/champions/select') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->championController?->select((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'GET' && preg_match('#^/v1/profile/([a-zA-Z0-9\-]+)$#', $path, $m) === 1) {
             $auth = $this->requireAuth($headers);
-            if ($auth !== null && isset($auth['status'])) {
+            if (isset($auth['status'])) {
                 return $auth;
             }
-            return $this->profile($m[1]);
+            return $this->profileController?->profile($m[1]) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'GET' && $path === '/v1/history') {
             $auth = $this->requireAuth($headers);
-            if ($auth !== null && isset($auth['status'])) {
+            if (isset($auth['status'])) {
                 return $auth;
             }
-            $playerId = (string) ($auth['playerId'] ?? '');
-            return ['status' => 200, 'data' => ['matches' => $this->history[$playerId] ?? []]];
+            return $this->profileController?->history((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'POST' && $path === '/v1/matchmaking/enqueue') {
             $auth = $this->requireAuth($headers);
-            if ($auth !== null && isset($auth['status'])) {
+            if (isset($auth['status'])) {
                 return $auth;
             }
+            return $this->gameplayController?->enqueue((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
 
-            $queue = (string) (($body ?? [])['queue'] ?? 'normal');
-            $championId = (string) (($body ?? [])['championId'] ?? '');
-            if (!MvpChampionRoster::isValid($championId)) {
-                return $this->error(422, 'INVALID_CHAMPION', 'Champion outside MVP roster.');
+        if ($method === 'GET' && preg_match('#^/v1/matchmaking/tickets/([a-zA-Z0-9\-]+)$#', $path, $m) === 1) {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
             }
-
-            if ($queue === 'ranked') {
-                return ['status' => 202, 'data' => ['ticketId' => 'ticket-ranked-1', 'etaSec' => 20]];
-            }
-
-            return ['status' => 200, 'data' => ['ticketId' => 'ticket-normal-1', 'etaSec' => 0, 'matchId' => 'match-real-1']];
+            return $this->gameplayController?->ticketStatus((string) ($auth['playerId'] ?? ''), $m[1]) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'POST' && preg_match('#^/v1/matches/([a-zA-Z0-9\-]+)/turns$#', $path, $m) === 1) {
             $auth = $this->requireAuth($headers);
-            if ($auth !== null && isset($auth['status'])) {
+            if (isset($auth['status'])) {
                 return $auth;
             }
+            return $this->gameplayController?->resolveTurn((string) ($auth['playerId'] ?? ''), $m[1], $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
 
-            return $this->resolveTurn($m[1], $body ?? []);
+        if ($method === 'GET' && preg_match('#^/v1/matches/([a-zA-Z0-9\-]+)$#', $path, $m) === 1) {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->gameplayController?->match((string) ($auth['playerId'] ?? ''), $m[1]) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'POST' && preg_match('#^/v1/matches/([a-zA-Z0-9\-]+)/complete$#', $path, $m) === 1) {
             $auth = $this->requireAuth($headers);
-            if ($auth !== null && isset($auth['status'])) {
+            if (isset($auth['status'])) {
                 return $auth;
             }
-
-            return $this->completeMatch($m[1]);
+            return $this->gameplayController?->completeMatch((string) ($auth['playerId'] ?? ''), $m[1]) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         return $this->error(404, 'NOT_FOUND', 'Endpoint not found.');
-    }
-
-    /** @param array<string, mixed> $body */
-    private function login(array $body): array
-    {
-        $name = trim((string) ($body['name'] ?? ''));
-        if ($name === '') {
-            return $this->error(422, 'INVALID_LOGIN', 'name is required.');
-        }
-
-        $playerId = 'p1';
-        $now = time();
-        $payload = ['sub' => $playerId, 'name' => $name, 'iat' => $now, 'exp' => $now + 7200];
-        $token = 'mvp.' . rtrim(strtr(base64_encode((string) json_encode($payload)), '+/', '-_'), '=') . '.sig';
-
-        return ['status' => 200, 'data' => ['token' => $token, 'user' => ['playerId' => $playerId, 'name' => $name]]];
     }
 
     /** @return array<string, mixed>|null */
@@ -161,48 +289,12 @@ final class MvpApiKernel
             return $this->error(401, 'UNAUTHORIZED', 'Bearer token missing.');
         }
 
-        $raw = substr($authorization, 7);
-        $parts = explode('.', $raw);
-        if (count($parts) < 3 || $parts[0] !== 'mvp') {
-            return $this->error(401, 'INVALID_TOKEN', 'Malformed token.');
+        $payload = $this->tokenService->decode(substr($authorization, 7));
+        if ($payload === null) {
+            return $this->error(401, 'INVALID_TOKEN', 'Invalid or expired token.');
         }
 
-        $json = base64_decode(strtr($parts[1], '-_', '+/'), true);
-        if ($json === false) {
-            return $this->error(401, 'INVALID_TOKEN', 'Cannot decode token payload.');
-        }
-
-        $payload = json_decode($json, true);
-        if (!is_array($payload)) {
-            return $this->error(401, 'INVALID_TOKEN', 'Invalid token payload.');
-        }
-
-        if ((int) ($payload['exp'] ?? 0) < time()) {
-            return $this->error(401, 'TOKEN_EXPIRED', 'Token expired.');
-        }
-
-        return ['playerId' => (string) ($payload['sub'] ?? '')];
-    }
-
-    private function profile(string $playerId): array
-    {
-        $user = $this->users[$playerId] ?? null;
-        if ($user === null) {
-            return $this->error(404, 'PROFILE_NOT_FOUND', 'Profile not found.');
-        }
-
-        return [
-            'status' => 200,
-            'data' => [
-                'playerId' => $user['playerId'],
-                'name' => $user['name'],
-                'rank' => $user['rank'],
-                'mmrGlobal' => $user['mmr'],
-                'mmrByChampion' => ['assassin' => 1210, 'bruiser' => 1190, 'control' => 1225, 'sustain' => 1180],
-                'freshnessSeconds' => 120,
-                'isFresh' => true,
-            ],
-        ];
+        return ['playerId' => $payload['sub']];
     }
 
     private function error(int $status, string $code, string $message): array
@@ -210,47 +302,19 @@ final class MvpApiKernel
         return ['status' => $status, 'data' => ['error' => ['code' => $code, 'message' => $message]]];
     }
 
-    /** @param array<string, mixed> $body */
-    private function resolveTurn(string $matchId, array $body): array
+    private function connectDb(): ?PDO
     {
-        $match = $this->matches[$matchId] ?? null;
-        if ($match === null) {
-            return $this->error(404, 'MATCH_NOT_FOUND', 'Match not found.');
+        $dsn = getenv('DATABASE_URL') ?: 'pgsql:host=db;port=5432;dbname=true_duel';
+        $user = getenv('DATABASE_USER') ?: 'true_duel';
+        $password = getenv('DATABASE_PASSWORD') ?: 'true_duel';
+
+        try {
+            return new PDO($dsn, $user, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]);
+        } catch (Throwable) {
+            return null;
         }
-
-        $clientStateVersion = (int) ($body['clientStateVersion'] ?? 0);
-        $serverStateVersion = (int) ($match['serverStateVersion'] ?? 0);
-
-        if ($clientStateVersion < $serverStateVersion) {
-            return [
-                'status' => 409,
-                'data' => [
-                    'code' => 'STATE_VERSION_CONFLICT',
-                    'authoritativeState' => ['serverStateVersion' => $serverStateVersion],
-                ],
-            ];
-        }
-
-        $nextVersion = $serverStateVersion + 1;
-        $this->matches[$matchId]['serverStateVersion'] = $nextVersion;
-
-        return ['status' => 200, 'data' => ['turnNo' => 1, 'result' => 'ok', 'serverStateVersion' => $nextVersion]];
-    }
-
-    private function completeMatch(string $matchId): array
-    {
-        $match = $this->matches[$matchId] ?? null;
-        if ($match === null) {
-            return $this->error(404, 'MATCH_NOT_FOUND', 'Match not found.');
-        }
-
-        return [
-            'status' => 200,
-            'data' => [
-                'winner' => (string) ($match['winner'] ?? 'p1'),
-                'mmr' => (array) ($match['mmr'] ?? ['globalDelta' => 0, 'championDelta' => 0]),
-                'rewards' => (array) ($match['rewards'] ?? ['coins' => 0, 'gems' => 0]),
-            ],
-        ];
     }
 }
