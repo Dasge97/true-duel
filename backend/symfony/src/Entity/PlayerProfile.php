@@ -12,6 +12,8 @@ final class PlayerProfile
         private string $rankLabel,
         private int $mmrGlobal,
         private string $region,
+        private int $puntosHabilidad = 1000,
+        private string $tituloCompetitivo = 'Combatiente',
         private int $coins = 0,
         private int $gems = 0,
         private int $experienceTotal = 0,
@@ -19,6 +21,7 @@ final class PlayerProfile
         private int $totalMatches = 0,
         private int $wins = 0,
         private int $losses = 0,
+        private ?int $posicionCompetitiva = null,
     ) {
     }
 
@@ -45,6 +48,21 @@ final class PlayerProfile
     public function region(): string
     {
         return $this->region;
+    }
+
+    public function puntosHabilidad(): int
+    {
+        return $this->puntosHabilidad;
+    }
+
+    public function tituloCompetitivo(): string
+    {
+        return $this->tituloCompetitivo;
+    }
+
+    public function posicionCompetitiva(): ?int
+    {
+        return $this->posicionCompetitiva;
     }
 
     public function coins(): int

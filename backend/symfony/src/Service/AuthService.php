@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Repository\CatalogoPersonajesRepositorio;
+use App\Repository\EquipoJugadorRepositorio;
+use App\Repository\JugadorPersonajeRepositorio;
 use App\Repository\PlayerProfileRepository;
-use App\Repository\PlayerChampionRepository;
 use App\Repository\UserRepository;
 use PDO;
 use PDOException;
@@ -16,7 +18,9 @@ final class AuthService
         private PDO $pdo,
         private UserRepository $userRepository,
         private PlayerProfileRepository $profileRepository,
-        private PlayerChampionRepository $playerChampionRepository,
+        private CatalogoPersonajesRepositorio $catalogoPersonajesRepositorio,
+        private JugadorPersonajeRepositorio $jugadorPersonajeRepositorio,
+        private EquipoJugadorRepositorio $equipoJugadorRepositorio,
         private TokenService $tokenService,
     ) {
     }
@@ -47,7 +51,8 @@ final class AuthService
             $this->pdo->beginTransaction();
             $this->userRepository->create($playerId, $username, $email, $hash);
             $this->profileRepository->create($playerId, $displayName, 'Bronce I', 1000, 'eu-west');
-            $this->playerChampionRepository->initializeForPlayer($playerId);
+            $this->jugadorPersonajeRepositorio->inicializarParaJugador($playerId);
+            $this->inicializarEquipoBase($playerId);
             $this->pdo->commit();
         } catch (PDOException $e) {
             if ($this->pdo->inTransaction()) {
@@ -107,5 +112,23 @@ final class AuthService
         $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
         $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
+    }
+
+    private function inicializarEquipoBase(string $jugadorId): void
+    {
+        $equipo = [];
+        foreach ($this->catalogoPersonajesRepositorio->todos() as $personaje) {
+            if (!(bool) ($personaje['desbloqueadoInicial'] ?? false)) {
+                continue;
+            }
+            $equipo[] = (string) ($personaje['id'] ?? '');
+            if (count($equipo) === 3) {
+                break;
+            }
+        }
+
+        if (count($equipo) === 3) {
+            $this->equipoJugadorRepositorio->guardar($jugadorId, $equipo);
+        }
     }
 }

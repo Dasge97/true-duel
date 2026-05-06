@@ -19,8 +19,8 @@ final class PlayerProfileRepository
     public function create(string $playerId, string $displayName, string $rankLabel, int $mmrGlobal, string $region): PlayerProfile
     {
         $statement = $this->pdo->prepare(
-            'INSERT INTO player_profiles (player_id, display_name, rank_label, mmr_global, region, coins, gems, experience_total, level, total_matches, wins, losses, updated_at)
-             VALUES (:player_id, :display_name, :rank_label, :mmr_global, :region, 1000, 0, 0, 1, 0, 0, 0, NOW())'
+            'INSERT INTO player_profiles (player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, coins, gems, experience_total, level, total_matches, wins, losses, updated_at)
+             VALUES (:player_id, :display_name, :rank_label, :mmr_global, :region, 1000, :titulo_competitivo, 1000, 0, 0, 1, 0, 0, 0, NOW())'
         );
         $statement->execute([
             ':player_id' => $playerId,
@@ -28,15 +28,16 @@ final class PlayerProfileRepository
             ':rank_label' => $rankLabel,
             ':mmr_global' => $mmrGlobal,
             ':region' => $region,
+            ':titulo_competitivo' => 'Combatiente',
         ]);
 
-        return new PlayerProfile($playerId, $displayName, $rankLabel, $mmrGlobal, $region);
+        return new PlayerProfile($playerId, $displayName, $rankLabel, $mmrGlobal, $region, 1000, 'Combatiente');
     }
 
     public function findByPlayerId(string $playerId): ?PlayerProfile
     {
         $statement = $this->pdo->prepare(
-            'SELECT player_id, display_name, rank_label, mmr_global, region, coins, gems, experience_total, level, total_matches, wins, losses
+            'SELECT player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, posicion_competitiva, coins, gems, experience_total, level, total_matches, wins, losses
              FROM player_profiles
              WHERE player_id = :player_id
              LIMIT 1'
@@ -53,6 +54,8 @@ final class PlayerProfileRepository
             (string) $row['rank_label'],
             (int) $row['mmr_global'],
             (string) $row['region'],
+            (int) ($row['puntos_habilidad'] ?? 1000),
+            (string) ($row['titulo_competitivo'] ?? 'Combatiente'),
             (int) ($row['coins'] ?? 0),
             (int) ($row['gems'] ?? 0),
             (int) ($row['experience_total'] ?? 0),
@@ -60,6 +63,7 @@ final class PlayerProfileRepository
             (int) ($row['total_matches'] ?? 0),
             (int) ($row['wins'] ?? 0),
             (int) ($row['losses'] ?? 0),
+            isset($row['posicion_competitiva']) ? (int) $row['posicion_competitiva'] : null,
         );
     }
 
@@ -67,9 +71,9 @@ final class PlayerProfileRepository
     public function findRanking(int $limit = 100): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT player_id, display_name, rank_label, mmr_global, region, coins, gems, experience_total, level, total_matches, wins, losses
+            'SELECT player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, posicion_competitiva, coins, gems, experience_total, level, total_matches, wins, losses
              FROM player_profiles
-             ORDER BY mmr_global DESC
+             ORDER BY puntos_habilidad DESC, mmr_global DESC, updated_at ASC
              LIMIT :limit'
         );
         $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
@@ -90,6 +94,8 @@ final class PlayerProfileRepository
                 (string) $row['rank_label'],
                 (int) $row['mmr_global'],
                 (string) $row['region'],
+                (int) ($row['puntos_habilidad'] ?? 1000),
+                (string) ($row['titulo_competitivo'] ?? 'Combatiente'),
                 (int) ($row['coins'] ?? 0),
                 (int) ($row['gems'] ?? 0),
                 (int) ($row['experience_total'] ?? 0),
@@ -97,6 +103,7 @@ final class PlayerProfileRepository
                 (int) ($row['total_matches'] ?? 0),
                 (int) ($row['wins'] ?? 0),
                 (int) ($row['losses'] ?? 0),
+                isset($row['posicion_competitiva']) ? (int) $row['posicion_competitiva'] : null,
             );
         }
 
@@ -107,7 +114,7 @@ final class PlayerProfileRepository
     public function findLatest(int $limit = 200): array
     {
         $statement = $this->pdo->prepare(
-            'SELECT player_id, display_name, rank_label, mmr_global, region, coins, gems, experience_total, level, total_matches, wins, losses
+            'SELECT player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, posicion_competitiva, coins, gems, experience_total, level, total_matches, wins, losses
              FROM player_profiles
              ORDER BY updated_at DESC
              LIMIT :limit'
@@ -130,6 +137,8 @@ final class PlayerProfileRepository
                 (string) $row['rank_label'],
                 (int) $row['mmr_global'],
                 (string) $row['region'],
+                (int) ($row['puntos_habilidad'] ?? 1000),
+                (string) ($row['titulo_competitivo'] ?? 'Combatiente'),
                 (int) ($row['coins'] ?? 0),
                 (int) ($row['gems'] ?? 0),
                 (int) ($row['experience_total'] ?? 0),
@@ -137,6 +146,7 @@ final class PlayerProfileRepository
                 (int) ($row['total_matches'] ?? 0),
                 (int) ($row['wins'] ?? 0),
                 (int) ($row['losses'] ?? 0),
+                isset($row['posicion_competitiva']) ? (int) $row['posicion_competitiva'] : null,
             );
         }
 
@@ -240,5 +250,74 @@ final class PlayerProfileRepository
         ]);
 
         return $this->findByPlayerId($playerId);
+    }
+
+    public function aplicarPuntosHabilidad(string $playerId, int $deltaPuntos): ?PlayerProfile
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE player_profiles
+             SET puntos_habilidad = GREATEST(0, puntos_habilidad + :delta_puntos),
+                 updated_at = NOW()
+             WHERE player_id = :player_id'
+        );
+        $statement->execute([
+            ':delta_puntos' => $deltaPuntos,
+            ':player_id' => $playerId,
+        ]);
+
+        if ($statement->rowCount() !== 1) {
+            return null;
+        }
+
+        return $this->findByPlayerId($playerId);
+    }
+
+    public function aplicarTitulosCompetitivos(array $tramos): void
+    {
+        if ($tramos === []) {
+            return;
+        }
+
+        $ranking = $this->findRanking(1000);
+        $actualizaciones = [];
+        $posicion = 1;
+        foreach ($ranking as $perfil) {
+            $titulo = $this->resolverTituloPorPosicion($tramos, $posicion);
+            $actualizaciones[] = [
+                'player_id' => $perfil->playerId(),
+                'titulo' => $titulo,
+                'posicion' => $posicion,
+            ];
+            $posicion++;
+        }
+
+        $statement = $this->pdo->prepare(
+            'UPDATE player_profiles
+             SET titulo_competitivo = :titulo,
+                 posicion_competitiva = :posicion,
+                 updated_at = NOW()
+             WHERE player_id = :player_id'
+        );
+        foreach ($actualizaciones as $row) {
+            $statement->execute([
+                ':titulo' => $row['titulo'],
+                ':posicion' => $row['posicion'],
+                ':player_id' => $row['player_id'],
+            ]);
+        }
+    }
+
+    /** @param list<array{nombre:string,cupo:int}> $tramos */
+    private function resolverTituloPorPosicion(array $tramos, int $posicion): string
+    {
+        $acumulado = 0;
+        foreach ($tramos as $tramo) {
+            $acumulado += max(0, (int) ($tramo['cupo'] ?? 0));
+            if ($acumulado > 0 && $posicion <= $acumulado) {
+                return (string) ($tramo['nombre'] ?? 'Combatiente');
+            }
+        }
+
+        return 'Combatiente';
     }
 }

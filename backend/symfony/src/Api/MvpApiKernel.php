@@ -5,30 +5,39 @@ declare(strict_types=1);
 namespace App\Api;
 
 use App\Controller\Api\AuthController;
-use App\Controller\Api\ChampionController;
+use App\Controller\Api\BonificadorPartidaController;
+use App\Controller\Api\EquipoController;
 use App\Controller\Api\GameplayController;
 use App\Controller\Api\MissionController;
+use App\Controller\Api\PersonajeController;
 use App\Controller\Api\ProfileController;
 use App\Controller\Api\StoreController;
+use App\Repository\BonificadorPartidaRepositorio;
+use App\Repository\CatalogoPersonajesRepositorio;
 use App\Repository\ChampionRatingRepository;
+use App\Repository\EquipoJugadorRepositorio;
 use App\Repository\GameMatchRepository;
+use App\Repository\JugadorPersonajeRepositorio;
 use App\Repository\MatchHistoryRepository;
 use App\Repository\MatchOutcomeRuleRepository;
 use App\Repository\MissionCatalogRepository;
 use App\Repository\MatchSettlementRepository;
 use App\Repository\MatchmakingTicketRepository;
-use App\Repository\ChampionCatalogRepository;
-use App\Repository\PlayerChampionRepository;
 use App\Repository\PlayerInventoryRepository;
 use App\Repository\PlayerMissionRepository;
 use App\Repository\PlayerProfileRepository;
 use App\Repository\StoreCatalogRepository;
 use App\Repository\TurnRepository;
+use App\Repository\TituloCompetitivoRepositorio;
 use App\Repository\UserRepository;
 use App\Service\AuthService;
-use App\Service\ChampionService;
+use App\Service\BonificadorPartidaService;
+use App\Service\ClasificacionCompetitivaService;
+use App\Service\EquipoService;
 use App\Service\GameplayService;
 use App\Service\MissionService;
+use App\Service\MotorCombateService;
+use App\Service\PersonajeService;
 use App\Service\ProfileService;
 use App\Service\StoreService;
 use App\Service\TokenService;
@@ -40,11 +49,13 @@ final class MvpApiKernel
     private ?PDO $pdo;
     private TokenService $tokenService;
     private ?AuthController $authController = null;
-    private ?ChampionController $championController = null;
     private ?StoreController $storeController = null;
     private ?MissionController $missionController = null;
     private ?ProfileController $profileController = null;
     private ?GameplayController $gameplayController = null;
+    private ?PersonajeController $personajeController = null;
+    private ?EquipoController $equipoController = null;
+    private ?BonificadorPartidaController $bonificadorPartidaController = null;
 
     public function __construct()
     {
@@ -54,10 +65,9 @@ final class MvpApiKernel
         if ($this->pdo !== null) {
             $userRepository = new UserRepository($this->pdo);
             $profileRepository = new PlayerProfileRepository($this->pdo);
-            $championCatalogRepository = new ChampionCatalogRepository($this->pdo);
+            $catalogoPersonajesRepositorio = new CatalogoPersonajesRepositorio($this->pdo);
             $storeCatalogRepository = new StoreCatalogRepository($this->pdo);
             $missionCatalogRepository = new MissionCatalogRepository($this->pdo);
-            $playerChampionRepository = new PlayerChampionRepository($this->pdo, $championCatalogRepository);
             $playerInventoryRepository = new PlayerInventoryRepository($this->pdo);
             $playerMissionRepository = new PlayerMissionRepository($this->pdo, $missionCatalogRepository);
             $historyRepository = new MatchHistoryRepository($this->pdo);
@@ -67,18 +77,28 @@ final class MvpApiKernel
             $turnRepository = new TurnRepository($this->pdo);
             $championRatingRepository = new ChampionRatingRepository($this->pdo);
             $matchSettlementRepository = new MatchSettlementRepository($this->pdo);
+            $jugadorPersonajeRepositorio = new JugadorPersonajeRepositorio($this->pdo, $catalogoPersonajesRepositorio);
+            $equipoJugadorRepositorio = new EquipoJugadorRepositorio($this->pdo);
+            $bonificadorPartidaRepositorio = new BonificadorPartidaRepositorio($this->pdo);
+            $tituloCompetitivoRepositorio = new TituloCompetitivoRepositorio($this->pdo);
 
             $authService = new AuthService(
                 $this->pdo,
                 $userRepository,
                 $profileRepository,
-                $playerChampionRepository,
+                $catalogoPersonajesRepositorio,
+                $jugadorPersonajeRepositorio,
+                $equipoJugadorRepositorio,
                 $this->tokenService,
             );
-            $championService = new ChampionService($this->pdo, $playerChampionRepository, $profileRepository, $championCatalogRepository);
             $storeService = new StoreService($this->pdo, $profileRepository, $playerInventoryRepository, $storeCatalogRepository);
             $missionService = new MissionService($this->pdo, $profileRepository, $playerMissionRepository, $missionCatalogRepository);
             $profileService = new ProfileService($profileRepository, $historyRepository, $championRatingRepository);
+            $personajeService = new PersonajeService($catalogoPersonajesRepositorio, $jugadorPersonajeRepositorio);
+            $equipoService = new EquipoService($catalogoPersonajesRepositorio, $jugadorPersonajeRepositorio, $equipoJugadorRepositorio);
+            $bonificadorPartidaService = new BonificadorPartidaService($bonificadorPartidaRepositorio);
+            $motorCombateService = new MotorCombateService($catalogoPersonajesRepositorio, $bonificadorPartidaRepositorio);
+            $clasificacionCompetitivaService = new ClasificacionCompetitivaService($profileRepository, $tituloCompetitivoRepositorio);
             $gameplayService = new GameplayService(
                 $this->pdo,
                 $matchRepository,
@@ -86,20 +106,24 @@ final class MvpApiKernel
                 $turnRepository,
                 $historyRepository,
                 $profileRepository,
-                $playerChampionRepository,
                 $playerMissionRepository,
-                $championCatalogRepository,
+                $jugadorPersonajeRepositorio,
+                $equipoJugadorRepositorio,
                 $matchOutcomeRuleRepository,
                 $championRatingRepository,
                 $matchSettlementRepository,
+                $motorCombateService,
+                $clasificacionCompetitivaService,
             );
 
             $this->authController = new AuthController($authService);
-            $this->championController = new ChampionController($championService);
             $this->storeController = new StoreController($storeService);
             $this->missionController = new MissionController($missionService);
             $this->profileController = new ProfileController($profileService);
             $this->gameplayController = new GameplayController($gameplayService);
+            $this->personajeController = new PersonajeController($personajeService);
+            $this->equipoController = new EquipoController($equipoService);
+            $this->bonificadorPartidaController = new BonificadorPartidaController($bonificadorPartidaService);
         }
     }
 
@@ -142,20 +166,52 @@ final class MvpApiKernel
             return $this->profileController?->profile((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
-        if ($method === 'GET' && $path === '/v1/champions/catalog') {
+        if ($method === 'GET' && $path === '/v1/personajes') {
             $auth = $this->requireAuth($headers);
             if (isset($auth['status'])) {
                 return $auth;
             }
-            return $this->championController?->catalog((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+            return $this->personajeController?->catalogo((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
-        if ($method === 'GET' && $path === '/v1/champions/me') {
+        if ($method === 'GET' && $path === '/v1/personajes/mios') {
             $auth = $this->requireAuth($headers);
             if (isset($auth['status'])) {
                 return $auth;
             }
-            return $this->championController?->mine((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+            return $this->personajeController?->mios((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'POST' && $path === '/v1/personajes/desbloquear') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->personajeController?->desbloquear((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'GET' && $path === '/v1/equipo') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->equipoController?->obtener((string) ($auth['playerId'] ?? '')) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if (($method === 'PUT' || $method === 'POST') && $path === '/v1/equipo') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->equipoController?->guardar((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
+        if ($method === 'GET' && $path === '/v1/bonificadores-partida') {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->bonificadorPartidaController?->catalogo() ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'GET' && $path === '/v1/store/catalog') {
@@ -204,22 +260,6 @@ final class MvpApiKernel
                 return $auth;
             }
             return $this->missionController?->claim((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
-        }
-
-        if ($method === 'POST' && $path === '/v1/champions/unlock') {
-            $auth = $this->requireAuth($headers);
-            if (isset($auth['status'])) {
-                return $auth;
-            }
-            return $this->championController?->unlock((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
-        }
-
-        if ($method === 'POST' && $path === '/v1/champions/select') {
-            $auth = $this->requireAuth($headers);
-            if (isset($auth['status'])) {
-                return $auth;
-            }
-            return $this->championController?->select((string) ($auth['playerId'] ?? ''), $body ?? []) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
         if ($method === 'GET' && preg_match('#^/v1/profile/([a-zA-Z0-9\-]+)$#', $path, $m) === 1) {

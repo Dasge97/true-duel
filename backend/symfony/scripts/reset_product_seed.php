@@ -36,35 +36,136 @@ function truncateIfExists(PDO $pdo, string $table): void
     $pdo->exec('TRUNCATE TABLE ' . $table);
 }
 
+/** @return list<array<string,mixed>> */
+function personajesBase(): array
+{
+    return [
+        ['id' => 'vanguard', 'nombre' => 'Vanguard', 'rol' => 'iniciador', 'descripcion' => 'Abre ventanas tácticas aplicando presión inicial.', 'habilidad' => 'Golpe balístico', 'detalle' => 'Daño medio y aplica Expuesto durante 1 turno.', 'efecto' => ['tipo' => 'aplicar_estado', 'estado' => 'expuesto', 'duracion_turnos' => 1, 'dano' => 'medio'], 'inicial' => true, 'precio' => 0, 'orden' => 1],
+        ['id' => 'bulwark', 'nombre' => 'Bulwark', 'rol' => 'amplificador', 'descripcion' => 'Estabiliza la composición con mitigación y economía defensiva.', 'habilidad' => 'Muralla cinética', 'detalle' => 'Mitigación global 1 turno y mejora ganancia de carga al bloquear.', 'efecto' => ['tipo' => 'mitigacion_global', 'duracion_turnos' => 1, 'mejora_carga_bloqueo' => true], 'inicial' => true, 'precio' => 0, 'orden' => 2],
+        ['id' => 'riftblade', 'nombre' => 'Riftblade', 'rol' => 'finalizador', 'descripcion' => 'Convierte estados de vulnerabilidad en daño explosivo.', 'habilidad' => 'Corte de fase', 'detalle' => 'Daño alto; daño extra si el objetivo está Expuesto.', 'efecto' => ['tipo' => 'dano_condicional', 'dano' => 'alto', 'estado_objetivo' => 'expuesto', 'bonus' => 'extra'], 'inicial' => true, 'precio' => 0, 'orden' => 3],
+        ['id' => 'hexa', 'nombre' => 'Hexa', 'rol' => 'iniciador', 'descripcion' => 'Disrumpe defensas y castiga especiales rivales.', 'habilidad' => 'Marca de entropía', 'detalle' => 'Reduce bloqueo rival y aumenta fallo de especial rival.', 'efecto' => ['tipo' => 'debuff_defensivo', 'reduce_bloqueo' => true, 'aumenta_fallo_especial' => true], 'inicial' => false, 'precio' => 600, 'orden' => 4],
+        ['id' => 'oracle', 'nombre' => 'Oracle', 'rol' => 'amplificador', 'descripcion' => 'Acelera ciclos de especiales mediante precognición.', 'habilidad' => 'Precognición', 'detalle' => 'El próximo especial aliado cuesta 1 carga menos.', 'efecto' => ['tipo' => 'reducir_coste_especial', 'reduccion_cargas' => 1, 'usos' => 1], 'inicial' => false, 'precio' => 800, 'orden' => 5],
+        ['id' => 'revenant', 'nombre' => 'Revenant', 'rol' => 'finalizador', 'descripcion' => 'Cierra combates recuperando vida mediante daño infligido.', 'habilidad' => 'Deuda de sangre', 'detalle' => 'Daño y cura proporcional al daño infligido.', 'efecto' => ['tipo' => 'dano_y_curacion', 'curacion_proporcional' => true], 'inicial' => false, 'precio' => 1000, 'orden' => 6],
+        ['id' => 'warden', 'nombre' => 'Warden', 'rol' => 'amplificador', 'descripcion' => 'Controla picos de daño anulando bonus ofensivos.', 'habilidad' => 'Interceptar', 'detalle' => 'Anula el próximo bonus ofensivo rival.', 'efecto' => ['tipo' => 'anular_bonus_ofensivo', 'usos' => 1], 'inicial' => false, 'precio' => 1200, 'orden' => 7],
+        ['id' => 'spark', 'nombre' => 'Spark', 'rol' => 'amplificador', 'descripcion' => 'Gana tempo con turnos extra controlados.', 'habilidad' => 'Sobrecarga', 'detalle' => 'Turno extra con daño reducido.', 'efecto' => ['tipo' => 'turno_extra', 'dano_reducido' => true, 'max_encadenado' => 1], 'inicial' => false, 'precio' => 1200, 'orden' => 8],
+        ['id' => 'mender', 'nombre' => 'Mender', 'rol' => 'amplificador', 'descripcion' => 'Aporta consistencia limpiando presión rival.', 'habilidad' => 'Reforja', 'detalle' => 'Cura y limpia un debuff relevante.', 'efecto' => ['tipo' => 'curar_y_limpiar', 'limpia_debuff' => true], 'inicial' => false, 'precio' => 1400, 'orden' => 9],
+        ['id' => 'grim', 'nombre' => 'Grim', 'rol' => 'finalizador', 'descripcion' => 'Castiga ciclos de alto gasto con ejecución matemática.', 'habilidad' => 'Veredicto', 'detalle' => 'Daño escalado por cargas gastadas en el ciclo.', 'efecto' => ['tipo' => 'dano_por_cargas_gastadas'], 'inicial' => false, 'precio' => 1400, 'orden' => 10],
+        ['id' => 'tracer', 'nombre' => 'Tracer', 'rol' => 'amplificador', 'descripcion' => 'Multiplica utilidades aliadas mediante ecos tácticos.', 'habilidad' => 'Eco táctico', 'detalle' => 'Repite el último efecto no dañino aliado al 70%.', 'efecto' => ['tipo' => 'repetir_efecto_no_danino', 'potencia' => 0.7], 'inicial' => false, 'precio' => 1600, 'orden' => 11],
+        ['id' => 'null', 'nombre' => 'Null', 'rol' => 'iniciador', 'descripcion' => 'Neutraliza contextos de alta varianza.', 'habilidad' => 'Zona muerta', 'detalle' => '1 turno sin críticos ni turnos extra para ambos.', 'efecto' => ['tipo' => 'bloquear_rng', 'sin_criticos' => true, 'sin_turnos_extra' => true, 'duracion_turnos' => 1], 'inicial' => false, 'precio' => 1800, 'orden' => 12],
+    ];
+}
+
+/** @return list<array<string,mixed>> */
+function bonificadoresBase(): array
+{
+    return [
+        ['id' => 'defensa_reforzada', 'nombre' => 'Defensa reforzada', 'categoria' => 'baja', 'descripcion' => 'Daño final global x0.85.', 'reglas' => ['multiplicador_dano_global' => 0.85], 'orden' => 1],
+        ['id' => 'fatiga_suave', 'nombre' => 'Fatiga suave', 'categoria' => 'baja', 'descripcion' => 'Desde turno 4: +5% daño global acumulativo por turno.', 'reglas' => ['desde_turno' => 4, 'dano_global_acumulativo' => 0.05], 'orden' => 2],
+        ['id' => 'pulso_estable', 'nombre' => 'Pulso estable', 'categoria' => 'baja', 'descripcion' => '-5 pp crítico global.', 'reglas' => ['critico_pp' => -5], 'orden' => 3],
+        ['id' => 'cadencia_tactica', 'nombre' => 'Cadencia táctica', 'categoria' => 'baja', 'descripcion' => '-50% relativo a probabilidad de repetición de acción.', 'reglas' => ['repeticion_accion_relativa' => -0.5], 'orden' => 4],
+        ['id' => 'ritmo_acelerado', 'nombre' => 'Ritmo acelerado', 'categoria' => 'media', 'descripcion' => '20% de doble turno, máximo 1 extra.', 'reglas' => ['doble_turno_probabilidad' => 0.2, 'max_extra' => 1], 'orden' => 5],
+        ['id' => 'eco_accion_moderado', 'nombre' => 'Eco de acción moderado', 'categoria' => 'media', 'descripcion' => '18% de repetir habilidad al 70% de potencia.', 'reglas' => ['eco_probabilidad' => 0.18, 'potencia' => 0.7], 'orden' => 6],
+        ['id' => 'critico_inestable', 'nombre' => 'Crítico inestable', 'categoria' => 'media', 'descripcion' => '+10 pp crítico y +5 pp fallo de habilidades.', 'reglas' => ['critico_pp' => 10, 'fallo_habilidad_pp' => 5], 'orden' => 7],
+        ['id' => 'escudo_intermitente', 'nombre' => 'Escudo intermitente', 'categoria' => 'media', 'descripcion' => '25% de reducir 40% del próximo daño recibido ese turno.', 'reglas' => ['escudo_probabilidad' => 0.25, 'reduccion_dano' => 0.4], 'orden' => 8],
+        ['id' => 'alta_volatilidad', 'nombre' => 'Alta volatilidad', 'categoria' => 'alta', 'descripcion' => '+15 pp crítico, +10 pp fallo, crítico x1.7.', 'reglas' => ['critico_pp' => 15, 'fallo_habilidad_pp' => 10, 'multiplicador_critico' => 1.7], 'orden' => 9],
+        ['id' => 'doble_filo', 'nombre' => 'Doble filo', 'categoria' => 'alta', 'descripcion' => '+20% daño de acciones; si falla habilidad, auto-daño 8% vida máxima.', 'reglas' => ['dano_acciones' => 0.2, 'autodano_fallo_vida_maxima' => 0.08], 'orden' => 10],
+    ];
+}
+
 function upsertCatalogs(PDO $pdo): void
 {
-    $championCatalog = $pdo->prepare(
-        'INSERT INTO champion_catalog (id, name, role, price_coins, starter_owned, starter_selected, sort_order)
-         VALUES (:id, :name, :role, :price_coins, :starter_owned, :starter_selected, :sort_order)
-         ON CONFLICT (id) DO UPDATE
-         SET name = EXCLUDED.name,
-             role = EXCLUDED.role,
-             price_coins = EXCLUDED.price_coins,
-             starter_owned = EXCLUDED.starter_owned,
-             starter_selected = EXCLUDED.starter_selected,
-             sort_order = EXCLUDED.sort_order'
-    );
+    if (tableExists($pdo, 'player_profiles')) {
+        $pdo->exec("ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS puntos_habilidad INT NOT NULL DEFAULT 1000");
+        $pdo->exec("ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS titulo_competitivo VARCHAR(64) NOT NULL DEFAULT 'Combatiente'");
+        $pdo->exec("ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS posicion_competitiva INT NULL");
+    }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS titulos_competitivos (id VARCHAR(64) PRIMARY KEY, nombre VARCHAR(96) NOT NULL, cupo INT NOT NULL, orden INT NOT NULL DEFAULT 0, activo BOOLEAN NOT NULL DEFAULT TRUE)");
 
-    foreach ([
-        ['id' => 'assassin', 'name' => 'Sombra', 'role' => 'Ataque', 'price' => 0, 'owned' => true, 'selected' => true, 'order' => 1],
-        ['id' => 'bruiser', 'name' => 'Titan', 'role' => 'Defensa', 'price' => 600, 'owned' => true, 'selected' => false, 'order' => 2],
-        ['id' => 'control', 'name' => 'Guardian', 'role' => 'Control', 'price' => 800, 'owned' => false, 'selected' => false, 'order' => 3],
-        ['id' => 'sustain', 'name' => 'Viento', 'role' => 'Sustain', 'price' => 1000, 'owned' => false, 'selected' => false, 'order' => 4],
-    ] as $row) {
-        $championCatalog->execute([
-            ':id' => $row['id'],
-            ':name' => $row['name'],
-            ':role' => $row['role'],
-            ':price_coins' => $row['price'],
-            ':starter_owned' => $row['owned'] ? 'true' : 'false',
-            ':starter_selected' => $row['selected'] ? 'true' : 'false',
-            ':sort_order' => $row['order'],
-        ]);
+    if (tableExists($pdo, 'personajes')) {
+        $pdo->exec('ALTER TABLE personajes ADD COLUMN IF NOT EXISTS precio_monedas INT NOT NULL DEFAULT 0');
+    }
+
+    if (tableExists($pdo, 'personajes')) {
+        $personajes = $pdo->prepare(
+            'INSERT INTO personajes (id, nombre, rol_sinergia, descripcion, habilidad_especial_nombre, habilidad_especial_descripcion, efecto_especial_json, coste_cargas, desbloqueado_inicial, precio_monedas, activo, orden)
+             VALUES (:id, :nombre, :rol_sinergia, :descripcion, :habilidad_especial_nombre, :habilidad_especial_descripcion, CAST(:efecto_especial_json AS jsonb), 2, :desbloqueado_inicial, :precio_monedas, TRUE, :orden)
+             ON CONFLICT (id) DO UPDATE
+             SET nombre = EXCLUDED.nombre,
+                 rol_sinergia = EXCLUDED.rol_sinergia,
+                 descripcion = EXCLUDED.descripcion,
+                 habilidad_especial_nombre = EXCLUDED.habilidad_especial_nombre,
+                 habilidad_especial_descripcion = EXCLUDED.habilidad_especial_descripcion,
+                 efecto_especial_json = EXCLUDED.efecto_especial_json,
+                 desbloqueado_inicial = EXCLUDED.desbloqueado_inicial,
+                 precio_monedas = EXCLUDED.precio_monedas,
+                 activo = TRUE,
+                 orden = EXCLUDED.orden'
+        );
+        foreach (personajesBase() as $row) {
+            $personajes->execute([
+                ':id' => $row['id'],
+                ':nombre' => $row['nombre'],
+                ':rol_sinergia' => $row['rol'],
+                ':descripcion' => $row['descripcion'],
+                ':habilidad_especial_nombre' => $row['habilidad'],
+                ':habilidad_especial_descripcion' => $row['detalle'],
+                ':efecto_especial_json' => json_encode($row['efecto'], JSON_THROW_ON_ERROR),
+                ':desbloqueado_inicial' => $row['inicial'] ? 'true' : 'false',
+                ':precio_monedas' => $row['precio'],
+                ':orden' => $row['orden'],
+            ]);
+        }
+    }
+
+    if (tableExists($pdo, 'bonificadores_partida')) {
+        $bonificadores = $pdo->prepare(
+            'INSERT INTO bonificadores_partida (id, nombre, categoria_volatilidad, descripcion, reglas_json, activo, orden)
+             VALUES (:id, :nombre, :categoria_volatilidad, :descripcion, CAST(:reglas_json AS jsonb), TRUE, :orden)
+             ON CONFLICT (id) DO UPDATE
+             SET nombre = EXCLUDED.nombre,
+                 categoria_volatilidad = EXCLUDED.categoria_volatilidad,
+                 descripcion = EXCLUDED.descripcion,
+                 reglas_json = EXCLUDED.reglas_json,
+                 activo = TRUE,
+                 orden = EXCLUDED.orden'
+        );
+        foreach (bonificadoresBase() as $row) {
+            $bonificadores->execute([
+                ':id' => $row['id'],
+                ':nombre' => $row['nombre'],
+                ':categoria_volatilidad' => $row['categoria'],
+                ':descripcion' => $row['descripcion'],
+                ':reglas_json' => json_encode($row['reglas'], JSON_THROW_ON_ERROR),
+                ':orden' => $row['orden'],
+            ]);
+        }
+    }
+
+    if (tableExists($pdo, 'titulos_competitivos')) {
+        $titulos = $pdo->prepare(
+            'INSERT INTO titulos_competitivos (id, nombre, cupo, orden, activo)
+             VALUES (:id, :nombre, :cupo, :orden, TRUE)
+             ON CONFLICT (id) DO UPDATE
+             SET nombre = EXCLUDED.nombre,
+                 cupo = EXCLUDED.cupo,
+                 orden = EXCLUDED.orden,
+                 activo = TRUE'
+        );
+        foreach ([
+            ['id' => 'sp_leyenda_unica', 'nombre' => 'Leyenda Única', 'cupo' => 1, 'orden' => 1],
+            ['id' => 'sp_gran_maestro', 'nombre' => 'Gran Maestro', 'cupo' => 5, 'orden' => 2],
+            ['id' => 'sp_maestro', 'nombre' => 'Maestro', 'cupo' => 25, 'orden' => 3],
+            ['id' => 'sp_diamante', 'nombre' => 'Diamante', 'cupo' => 75, 'orden' => 4],
+            ['id' => 'sp_platino', 'nombre' => 'Platino', 'cupo' => 150, 'orden' => 5],
+            ['id' => 'sp_oro', 'nombre' => 'Oro', 'cupo' => 300, 'orden' => 6],
+        ] as $row) {
+            $titulos->execute([
+                ':id' => $row['id'],
+                ':nombre' => $row['nombre'],
+                ':cupo' => $row['cupo'],
+                ':orden' => $row['orden'],
+            ]);
+        }
     }
 
     $storeCatalog = $pdo->prepare(
@@ -151,12 +252,12 @@ function upsertCatalogs(PDO $pdo): void
 function seedUsersAndProfiles(PDO $pdo): array
 {
     $seedUsers = [
-        ['id' => '11111111-1111-1111-1111-111111111111', 'username' => 'playerone', 'email' => 'playerone@trueduel.local', 'displayName' => 'Player One', 'rank' => 'Silver II', 'mmr' => 1210, 'coins' => 1600, 'gems' => 25, 'xp' => 560, 'level' => 4],
-        ['id' => '22222222-2222-2222-2222-222222222222', 'username' => 'raven', 'email' => 'raven@trueduel.local', 'displayName' => 'Raven', 'rank' => 'Gold I', 'mmr' => 1450, 'coins' => 2000, 'gems' => 55, 'xp' => 980, 'level' => 6],
-        ['id' => '33333333-3333-3333-3333-333333333333', 'username' => 'nova', 'email' => 'nova@trueduel.local', 'displayName' => 'Nova', 'rank' => 'Gold II', 'mmr' => 1410, 'coins' => 1800, 'gems' => 40, 'xp' => 860, 'level' => 5],
-        ['id' => '44444444-4444-4444-4444-444444444444', 'username' => 'ember', 'email' => 'ember@trueduel.local', 'displayName' => 'Ember', 'rank' => 'Silver I', 'mmr' => 1320, 'coins' => 900, 'gems' => 10, 'xp' => 410, 'level' => 3],
-        ['id' => '55555555-5555-5555-5555-555555555555', 'username' => 'atlas', 'email' => 'atlas@trueduel.local', 'displayName' => 'Atlas', 'rank' => 'Bronce I', 'mmr' => 1100, 'coins' => 750, 'gems' => 5, 'xp' => 180, 'level' => 2],
-        ['id' => '66666666-6666-6666-6666-666666666666', 'username' => 'luna', 'email' => 'luna@trueduel.local', 'displayName' => 'Luna', 'rank' => 'Plata III', 'mmr' => 1260, 'coins' => 1200, 'gems' => 18, 'xp' => 630, 'level' => 4],
+        ['id' => '11111111-1111-1111-1111-111111111111', 'username' => 'playerone', 'email' => 'playerone@trueduel.local', 'displayName' => 'Player One', 'rank' => 'Silver II', 'mmr' => 1210, 'sp' => 1210, 'coins' => 1600, 'gems' => 25, 'xp' => 560, 'level' => 4],
+        ['id' => '22222222-2222-2222-2222-222222222222', 'username' => 'raven', 'email' => 'raven@trueduel.local', 'displayName' => 'Raven', 'rank' => 'Gold I', 'mmr' => 1450, 'sp' => 1450, 'coins' => 2000, 'gems' => 55, 'xp' => 980, 'level' => 6],
+        ['id' => '33333333-3333-3333-3333-333333333333', 'username' => 'nova', 'email' => 'nova@trueduel.local', 'displayName' => 'Nova', 'rank' => 'Gold II', 'mmr' => 1410, 'sp' => 1410, 'coins' => 1800, 'gems' => 40, 'xp' => 860, 'level' => 5],
+        ['id' => '44444444-4444-4444-4444-444444444444', 'username' => 'ember', 'email' => 'ember@trueduel.local', 'displayName' => 'Ember', 'rank' => 'Silver I', 'mmr' => 1320, 'sp' => 1320, 'coins' => 900, 'gems' => 10, 'xp' => 410, 'level' => 3],
+        ['id' => '55555555-5555-5555-5555-555555555555', 'username' => 'atlas', 'email' => 'atlas@trueduel.local', 'displayName' => 'Atlas', 'rank' => 'Bronce I', 'mmr' => 1100, 'sp' => 1100, 'coins' => 750, 'gems' => 5, 'xp' => 180, 'level' => 2],
+        ['id' => '66666666-6666-6666-6666-666666666666', 'username' => 'luna', 'email' => 'luna@trueduel.local', 'displayName' => 'Luna', 'rank' => 'Plata III', 'mmr' => 1260, 'sp' => 1260, 'coins' => 1200, 'gems' => 18, 'xp' => 630, 'level' => 4],
     ];
 
     $insertUser = $pdo->prepare(
@@ -164,8 +265,8 @@ function seedUsersAndProfiles(PDO $pdo): array
          VALUES (:id, :username, :email, :password_hash, NOW())'
     );
     $insertProfile = $pdo->prepare(
-        'INSERT INTO player_profiles (player_id, display_name, rank_label, mmr_global, region, coins, gems, experience_total, level, total_matches, wins, losses, updated_at)
-         VALUES (:player_id, :display_name, :rank_label, :mmr_global, :region, :coins, :gems, :experience_total, :level, 0, 0, 0, NOW())'
+        'INSERT INTO player_profiles (player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, coins, gems, experience_total, level, total_matches, wins, losses, updated_at)
+         VALUES (:player_id, :display_name, :rank_label, :mmr_global, :region, :puntos_habilidad, :titulo_competitivo, :coins, :gems, :experience_total, :level, 0, 0, 0, NOW())'
     );
 
     foreach ($seedUsers as $seed) {
@@ -181,6 +282,8 @@ function seedUsersAndProfiles(PDO $pdo): array
             ':rank_label' => $seed['rank'],
             ':mmr_global' => $seed['mmr'],
             ':region' => 'eu-west',
+            ':puntos_habilidad' => $seed['sp'],
+            ':titulo_competitivo' => 'Combatiente',
             ':coins' => $seed['coins'],
             ':gems' => $seed['gems'],
             ':experience_total' => $seed['xp'],
@@ -191,51 +294,58 @@ function seedUsersAndProfiles(PDO $pdo): array
     return $seedUsers;
 }
 
-function seedPlayerChampions(PDO $pdo): void
+function seedJugadorPersonajes(PDO $pdo): void
 {
-    $champions = $pdo->query('SELECT id, starter_owned, starter_selected FROM champion_catalog ORDER BY sort_order ASC, id ASC')->fetchAll();
-    $players = $pdo->query('SELECT player_id FROM player_profiles')->fetchAll(PDO::FETCH_COLUMN);
-    if (!is_array($champions) || !is_array($players)) {
+    if (!tableExists($pdo, 'personajes') || !tableExists($pdo, 'jugador_personajes') || !tableExists($pdo, 'equipos_jugador')) {
         return;
     }
 
-    $insert = $pdo->prepare(
-        'INSERT INTO player_champions (player_id, champion_id, is_owned, is_selected, mastery_level, mastery_xp, unlocked_at, updated_at)
-         VALUES (:player_id, :champion_id, :is_owned, :is_selected, 1, 0, :unlocked_at, NOW())'
+    $personajes = $pdo->query('SELECT id, desbloqueado_inicial FROM personajes ORDER BY orden ASC, id ASC')->fetchAll();
+    $players = $pdo->query('SELECT player_id FROM player_profiles')->fetchAll(PDO::FETCH_COLUMN);
+    if (!is_array($personajes) || !is_array($players)) {
+        return;
+    }
+
+    $insertar = $pdo->prepare(
+        'INSERT INTO jugador_personajes (jugador_id, personaje_id, desbloqueado, nivel_maestria, xp_maestria, desbloqueado_en, actualizado_en)
+         VALUES (:jugador_id, :personaje_id, :desbloqueado, 1, 0, :desbloqueado_en, NOW())'
+    );
+    $slot = $pdo->prepare(
+        'INSERT INTO equipos_jugador (jugador_id, slot, personaje_id, actualizado_en)
+         VALUES (:jugador_id, :slot, :personaje_id, NOW())'
     );
 
     foreach ($players as $playerId) {
         if (!is_string($playerId) || $playerId === '') {
             continue;
         }
-        foreach ($champions as $champion) {
-            if (!is_array($champion)) {
+
+        $equipoInicial = [];
+        foreach ($personajes as $personaje) {
+            if (!is_array($personaje)) {
                 continue;
             }
-            $owned = in_array(strtolower((string) ($champion['starter_owned'] ?? 'false')), ['1', 't', 'true', 'yes', 'y'], true);
-            $selected = in_array(strtolower((string) ($champion['starter_selected'] ?? 'false')), ['1', 't', 'true', 'yes', 'y'], true);
-            $insert->execute([
-                ':player_id' => $playerId,
-                ':champion_id' => (string) $champion['id'],
-                ':is_owned' => $owned ? 'true' : 'false',
-                ':is_selected' => $selected ? 'true' : 'false',
-                ':unlocked_at' => $owned ? gmdate('Y-m-d H:i:s') : null,
+            $desbloqueado = in_array(strtolower((string) ($personaje['desbloqueado_inicial'] ?? 'false')), ['1', 't', 'true', 'yes', 'y'], true);
+            $personajeId = (string) ($personaje['id'] ?? '');
+            $insertar->execute([
+                ':jugador_id' => $playerId,
+                ':personaje_id' => $personajeId,
+                ':desbloqueado' => $desbloqueado ? 'true' : 'false',
+                ':desbloqueado_en' => $desbloqueado ? gmdate('Y-m-d H:i:s') : null,
+            ]);
+            if ($desbloqueado && count($equipoInicial) < 3) {
+                $equipoInicial[] = $personajeId;
+            }
+        }
+
+        foreach ($equipoInicial as $indice => $personajeId) {
+            $slot->execute([
+                ':jugador_id' => $playerId,
+                ':slot' => $indice + 1,
+                ':personaje_id' => $personajeId,
             ]);
         }
     }
-
-    $unlockExtras = $pdo->prepare(
-        'UPDATE player_champions
-         SET is_owned = TRUE, unlocked_at = COALESCE(unlocked_at, NOW()), updated_at = NOW()
-         WHERE player_id = :player_id AND champion_id = :champion_id'
-    );
-    $unlockExtras->execute([':player_id' => '11111111-1111-1111-1111-111111111111', ':champion_id' => 'control']);
-    $unlockExtras->execute([':player_id' => '22222222-2222-2222-2222-222222222222', ':champion_id' => 'sustain']);
-
-    $clear = $pdo->prepare('UPDATE player_champions SET is_selected = FALSE WHERE player_id = :player_id');
-    $set = $pdo->prepare('UPDATE player_champions SET is_selected = TRUE WHERE player_id = :player_id AND champion_id = :champion_id');
-    $clear->execute([':player_id' => '11111111-1111-1111-1111-111111111111']);
-    $set->execute([':player_id' => '11111111-1111-1111-1111-111111111111', ':champion_id' => 'control']);
 }
 
 function seedInventory(PDO $pdo): void
@@ -313,8 +423,55 @@ function seedDailyMissions(PDO $pdo): void
         }
 
         if ($playerId === '11111111-1111-1111-1111-111111111111') {
-            $insertChampionMarker->execute([':player_id' => $playerId, ':mission_date' => $today, ':champion_id' => 'assassin']);
+            $insertChampionMarker->execute([':player_id' => $playerId, ':mission_date' => $today, ':champion_id' => 'vanguard']);
         }
+    }
+}
+
+function recalcularTitulosCompetitivos(PDO $pdo): void
+{
+    if (!tableExists($pdo, 'player_profiles') || !tableExists($pdo, 'titulos_competitivos')) {
+        return;
+    }
+
+    $titulos = $pdo->query('SELECT nombre, cupo FROM titulos_competitivos WHERE activo = TRUE ORDER BY orden ASC')->fetchAll();
+    $players = $pdo->query('SELECT player_id FROM player_profiles ORDER BY puntos_habilidad DESC, mmr_global DESC, updated_at ASC')->fetchAll(PDO::FETCH_COLUMN);
+    if (!is_array($titulos) || !is_array($players)) {
+        return;
+    }
+
+    $update = $pdo->prepare(
+        'UPDATE player_profiles
+         SET titulo_competitivo = :titulo,
+             posicion_competitiva = :posicion,
+             updated_at = NOW()
+         WHERE player_id = :player_id'
+    );
+
+    $posicion = 1;
+    foreach ($players as $playerId) {
+        if (!is_string($playerId) || $playerId === '') {
+            continue;
+        }
+        $tituloActual = 'Combatiente';
+        $acumulado = 0;
+        foreach ($titulos as $titulo) {
+            if (!is_array($titulo)) {
+                continue;
+            }
+            $acumulado += max(0, (int) ($titulo['cupo'] ?? 0));
+            if ($acumulado > 0 && $posicion <= $acumulado) {
+                $tituloActual = (string) ($titulo['nombre'] ?? 'Combatiente');
+                break;
+            }
+        }
+
+        $update->execute([
+            ':titulo' => $tituloActual,
+            ':posicion' => $posicion,
+            ':player_id' => $playerId,
+        ]);
+        $posicion++;
     }
 }
 
@@ -332,7 +489,8 @@ try {
         'player_daily_mission_champions',
         'player_daily_missions',
         'player_inventory',
-        'player_champions',
+        'equipos_jugador',
+        'jugador_personajes',
         'player_profiles',
         'auth_users',
     ] as $table) {
@@ -340,9 +498,10 @@ try {
     }
 
     seedUsersAndProfiles($pdo);
-    seedPlayerChampions($pdo);
+    seedJugadorPersonajes($pdo);
     seedInventory($pdo);
     seedDailyMissions($pdo);
+    recalcularTitulosCompetitivos($pdo);
 
     $pdo->commit();
     fwrite(STDOUT, "[reset_product_seed] Product baseline reseeded.\n");
