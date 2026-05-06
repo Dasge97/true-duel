@@ -46,7 +46,25 @@ Servicios:
 - Healthcheck API: `http://localhost:8080/health`
 - PostgreSQL: `localhost:5432` (db/user/pass: `true_duel`)
 
-El contenedor API inicializa esquema base y crea usuarios seed:
+El contenedor API ahora ejecuta:
+- migraciones de esquema,
+- seed de producto para instalacion nueva,
+- y preserva datos existentes en reinicios normales.
+
+Estado backend actual:
+- `backend/symfony` ya funciona como app Symfony real
+- `public/index.php` entra por `App\\Kernel`
+- `bin/console` es el camino operativo oficial
+- migraciones via Doctrine Migrations
+- persistencia unificada en Doctrine
+- capa HTTP y runtime legacy retirados del flujo principal
+
+Documentacion tecnica de referencia:
+- [Migracion y desacoplamiento backend](docs/INFORME_MIGRACION_Y_DESACOPLAMIENTO_BACKEND.md)
+- [Contrato API backend](docs/CONTRATO_API_BACKEND.md)
+- [Propuestas de mejora del sistema de juego](docs/PROPUESTAS_MEJORA_SISTEMA_JUEGO.md)
+
+Usuarios seed iniciales en instalacion nueva:
 - `playerone` / `123456`
 - `raven` / `123456`
 - `nova` / `123456`
@@ -80,8 +98,31 @@ Notas backend actuales:
 Si quieres limpiar datos de pruebas y dejar un baseline mínimo jugable (usuarios/items/misiones):
 
 ```bash
-docker exec true-duel-api php scripts/reset_product_seed.php
+docker exec true-duel-api php bin/console app:product:seed --reset
 ```
+
+Si quieres ejecutar solo migraciones manualmente:
+
+```bash
+docker exec true-duel-api php bin/console doctrine:migrations:migrate --no-interaction
+```
+
+Si quieres refrescar catalogos y sembrar baseline solo cuando la BD este vacia:
+
+```bash
+docker exec true-duel-api php bin/console app:product:seed
+```
+
+Job competitivo manual:
+
+```bash
+docker exec true-duel-api php bin/console app:competitive:run
+```
+
+Endpoints admin locales:
+- Header: `X-Admin-Key: true-duel-admin-dev`
+- Recalculo competitivo: `POST /v1/admin/competitivo/recalcular`
+- Catalogos editables: `GET/PUT /v1/admin/catalogos/{catalogo}`
 
 Para parar:
 

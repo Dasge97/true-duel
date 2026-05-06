@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
-use PDO;
+use Doctrine\DBAL\Connection;
 
 final class PlayerMissionRepository
 {
     public function __construct(
-        private PDO $pdo,
+        private Connection $connection,
         private MissionCatalogRepository $missionCatalogRepository,
     )
     {
@@ -23,53 +23,43 @@ final class PlayerMissionRepository
     public function ensureTodayMissions(string $playerId): void
     {
         $today = $this->todayDate();
-        $statement = $this->pdo->prepare(
-            'INSERT INTO player_daily_missions
-                (player_id, mission_date, mission_id, target_value, progress_value, reward_xp, reward_coins, claimed, updated_at)
-             VALUES
-                (:player_id, :mission_date, :mission_id, :target_value, 0, :reward_xp, :reward_coins, FALSE, NOW())
-             ON CONFLICT (player_id, mission_date, mission_id) DO NOTHING'
-        );
-
         foreach ($this->missionCatalogRepository->all() as $mission) {
-            $statement->execute([
-                ':player_id' => $playerId,
-                ':mission_date' => $today,
-                ':mission_id' => $mission['id'],
-                ':target_value' => $mission['target'],
-                ':reward_xp' => $mission['rewardXp'],
-                ':reward_coins' => $mission['rewardCoins'],
-            ]);
+            $this->connection->executeStatement(
+                'INSERT INTO player_daily_missions
+                    (player_id, mission_date, mission_id, target_value, progress_value, reward_xp, reward_coins, claimed, updated_at)
+                 VALUES
+                    (:player_id, :mission_date, :mission_id, :target_value, 0, :reward_xp, :reward_coins, FALSE, NOW())
+                 ON CONFLICT (player_id, mission_date, mission_id) DO NOTHING',
+                [
+                    'player_id' => $playerId,
+                    'mission_date' => $today,
+                    'mission_id' => $mission['id'],
+                    'target_value' => $mission['target'],
+                    'reward_xp' => $mission['rewardXp'],
+                    'reward_coins' => $mission['rewardCoins'],
+                ]
+            );
         }
     }
 
-    /** @return list<array{missionId:string,title:string,target:int,progress:int,rewardXp:int,rewardCoins:int,claimed:bool,completed:bool}> */
+        /** @return list<array{missionId:string,title:string,target:int,progress:int,rewardXp:int,rewardCoins:int,claimed:bool,completed:bool}> */
     public function findToday(string $playerId): array
     {
         $this->ensureTodayMissions($playerId);
         $today = $this->todayDate();
-        $statement = $this->pdo->prepare(
+        $rows = $this->connection->fetchAllAssociative(
             'SELECT mission_id, target_value, progress_value, reward_xp, reward_coins, claimed
              FROM player_daily_missions
              WHERE player_id = :player_id AND mission_date = :mission_date
-             ORDER BY mission_id ASC'
+             ORDER BY mission_id ASC',
+            [
+                'player_id' => $playerId,
+                'mission_date' => $today,
+            ]
         );
-        $statement->execute([
-            ':player_id' => $playerId,
-            ':mission_date' => $today,
-        ]);
-
-        $rows = $statement->fetchAll();
-        if (!is_array($rows)) {
-            return [];
-        }
 
         $missions = [];
         foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
             $missionId = (string) ($row['mission_id'] ?? '');
             $meta = $this->missionCatalogRepository->find($missionId);
             if ($meta === null) {
@@ -103,20 +93,20 @@ final class PlayerMissionRepository
         $this->ensureTodayMissions($playerId);
         $today = $this->todayDate();
 
-        $statement = $this->pdo->prepare(
+        $this->connection->executeStatement(
             'UPDATE player_daily_missions
              SET progress_value = LEAST(target_value, progress_value + :amount),
                  updated_at = NOW()
              WHERE player_id = :player_id
                AND mission_date = :mission_date
-               AND mission_id = :mission_id'
+               AND mission_id = :mission_id',
+            [
+                'amount' => $amount,
+                'player_id' => $playerId,
+                'mission_date' => $today,
+                'mission_id' => $missionId,
+            ]
         );
-        $statement->execute([
-            ':amount' => $amount,
-            ':player_id' => $playerId,
-            ':mission_date' => $today,
-            ':mission_id' => $missionId,
-        ]);
     }
 
     public function addChampionUsedIfNew(string $playerId, string $championId): bool
@@ -124,18 +114,18 @@ final class PlayerMissionRepository
         $this->ensureTodayMissions($playerId);
         $today = $this->todayDate();
 
-        $statement = $this->pdo->prepare(
+        $affected = $this->connection->executeStatement(
             'INSERT INTO player_daily_mission_champions (player_id, mission_date, champion_id)
              VALUES (:player_id, :mission_date, :champion_id)
-             ON CONFLICT (player_id, mission_date, champion_id) DO NOTHING'
+             ON CONFLICT (player_id, mission_date, champion_id) DO NOTHING',
+            [
+                'player_id' => $playerId,
+                'mission_date' => $today,
+                'champion_id' => $championId,
+            ]
         );
-        $statement->execute([
-            ':player_id' => $playerId,
-            ':mission_date' => $today,
-            ':champion_id' => $championId,
-        ]);
 
-        return $statement->rowCount() === 1;
+        return $affected === 1;
     }
 
     /** @return array{missionId:string,target:int,progress:int,rewardXp:int,rewardCoins:int,claimed:bool}|null */
@@ -143,20 +133,18 @@ final class PlayerMissionRepository
     {
         $this->ensureTodayMissions($playerId);
         $today = $this->todayDate();
-        $statement = $this->pdo->prepare(
+        $row = $this->connection->fetchAssociative(
             'SELECT mission_id, target_value, progress_value, reward_xp, reward_coins, claimed
              FROM player_daily_missions
              WHERE player_id = :player_id AND mission_date = :mission_date AND mission_id = :mission_id
-             LIMIT 1'
+             LIMIT 1',
+            [
+                'player_id' => $playerId,
+                'mission_date' => $today,
+                'mission_id' => $missionId,
+            ]
         );
-        $statement->execute([
-            ':player_id' => $playerId,
-            ':mission_date' => $today,
-            ':mission_id' => $missionId,
-        ]);
-
-        $row = $statement->fetch();
-        if (!is_array($row)) {
+        if ($row === false) {
             return null;
         }
 
@@ -173,22 +161,22 @@ final class PlayerMissionRepository
     public function claimTodayMission(string $playerId, string $missionId): bool
     {
         $today = $this->todayDate();
-        $statement = $this->pdo->prepare(
+        $affected = $this->connection->executeStatement(
             'UPDATE player_daily_missions
              SET claimed = TRUE, updated_at = NOW()
              WHERE player_id = :player_id
                AND mission_date = :mission_date
                AND mission_id = :mission_id
                AND claimed = FALSE
-               AND progress_value >= target_value'
+               AND progress_value >= target_value',
+            [
+                'player_id' => $playerId,
+                'mission_date' => $today,
+                'mission_id' => $missionId,
+            ]
         );
-        $statement->execute([
-            ':player_id' => $playerId,
-            ':mission_date' => $today,
-            ':mission_id' => $missionId,
-        ]);
 
-        return $statement->rowCount() === 1;
+        return $affected === 1;
     }
 
     private function toBool(mixed $value): bool

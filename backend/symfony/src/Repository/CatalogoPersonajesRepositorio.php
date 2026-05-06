@@ -4,96 +4,85 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
-use PDO;
+use App\Entity\CharacterCatalog;
+use Doctrine\ORM\EntityManagerInterface;
 
 final class CatalogoPersonajesRepositorio
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private EntityManagerInterface $entityManager)
     {
     }
 
     /** @return list<array<string, mixed>> */
     public function todos(): array
     {
-        $sentencia = $this->pdo->query(
-            'SELECT id, nombre, rol_sinergia, descripcion, habilidad_especial_nombre,
-                    habilidad_especial_descripcion, efecto_especial_json, coste_cargas,
-                    desbloqueado_inicial, precio_monedas, orden, activo
-             FROM personajes
-             WHERE activo = TRUE
-             ORDER BY orden ASC, id ASC'
-        );
-        $filas = $sentencia->fetchAll();
-        if (!is_array($filas)) {
-            return [];
-        }
+        $entities = $this->entityManager->createQueryBuilder()
+            ->select('p')
+            ->from(CharacterCatalog::class, 'p')
+            ->where('p.active = true')
+            ->orderBy('p.sortOrder', 'ASC')
+            ->addOrderBy('p.id', 'ASC')
+            ->getQuery()
+            ->getResult();
 
-        return array_values(array_filter(array_map(fn(mixed $fila): ?array => is_array($fila) ? $this->mapearFila($fila) : null, $filas)));
+        return array_map(
+            static fn(CharacterCatalog $character): array => $character->toApiArray(),
+            $entities
+        );
     }
 
     /** @return array<string, mixed>|null */
     public function buscar(string $personajeId): ?array
     {
-        $sentencia = $this->pdo->prepare(
-            'SELECT id, nombre, rol_sinergia, descripcion, habilidad_especial_nombre,
-                    habilidad_especial_descripcion, efecto_especial_json, coste_cargas,
-                    desbloqueado_inicial, precio_monedas, orden, activo
-             FROM personajes
-             WHERE id = :id AND activo = TRUE
-             LIMIT 1'
-        );
-        $sentencia->execute([':id' => $personajeId]);
-        $fila = $sentencia->fetch();
-        if (!is_array($fila)) {
-            return null;
-        }
+        $entity = $this->entityManager->createQueryBuilder()
+            ->select('p')
+            ->from(CharacterCatalog::class, 'p')
+            ->where('p.id = :id')
+            ->andWhere('p.active = true')
+            ->setParameter('id', $personajeId)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
 
-        return $this->mapearFila($fila);
+        return $entity instanceof CharacterCatalog ? $entity->toApiArray() : null;
     }
 
-    /** @param array<string, mixed> $fila @return array<string, mixed> */
-    private function mapearFila(array $fila): array
+    /** @param list<mixed> $items */
+    public function replaceAll(array $items): void
     {
-        return [
-            'id' => (string) ($fila['id'] ?? ''),
-            'nombre' => (string) ($fila['nombre'] ?? ''),
-            'rolSinergia' => (string) ($fila['rol_sinergia'] ?? ''),
-            'descripcion' => (string) ($fila['descripcion'] ?? ''),
-            'habilidadEspecialNombre' => (string) ($fila['habilidad_especial_nombre'] ?? ''),
-            'habilidadEspecialDescripcion' => (string) ($fila['habilidad_especial_descripcion'] ?? ''),
-            'efectoEspecial' => $this->decodificarJson($fila['efecto_especial_json'] ?? '{}'),
-            'costeCargas' => (int) ($fila['coste_cargas'] ?? 2),
-            'desbloqueadoInicial' => $this->aBooleano($fila['desbloqueado_inicial'] ?? false),
-            'precioMonedas' => (int) ($fila['precio_monedas'] ?? 0),
-            'orden' => (int) ($fila['orden'] ?? 0),
-        ];
+        $this->entityManager->createQuery('DELETE FROM App\Entity\CharacterCatalog c')->execute();
+
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $this->entityManager->persist(new CharacterCatalog(
+                (string) ($item['id'] ?? ''),
+                (string) ($item['nombre'] ?? ''),
+                (string) ($item['rolSinergia'] ?? ''),
+                (string) ($item['descripcion'] ?? ''),
+                (string) ($item['habilidadEspecialNombre'] ?? ''),
+                (string) ($item['habilidadEspecialDescripcion'] ?? ''),
+                $this->decodeJsonLikeArray($item['efectoEspecial'] ?? []),
+                (int) ($item['costeCargas'] ?? 2),
+                !empty($item['desbloqueadoInicial']),
+                (int) ($item['precioMonedas'] ?? 0),
+                array_key_exists('activo', $item) ? !empty($item['activo']) : true,
+                (int) ($item['orden'] ?? ($index + 1)),
+            ));
+        }
+
+        $this->entityManager->flush();
     }
 
     /** @return array<string, mixed> */
-    private function decodificarJson(mixed $valor): array
+    private function decodeJsonLikeArray(mixed $value): array
     {
-        if (is_array($valor)) {
-            return $valor;
-        }
-        if (!is_string($valor) || $valor === '') {
-            return [];
-        }
-        $decodificado = json_decode($valor, true);
-        return is_array($decodificado) ? $decodificado : [];
-    }
-
-    private function aBooleano(mixed $valor): bool
-    {
-        if (is_bool($valor)) {
-            return $valor;
-        }
-        if (is_int($valor)) {
-            return $valor === 1;
-        }
-        if (is_string($valor)) {
-            return in_array(strtolower($valor), ['1', 't', 'true', 'y', 'yes'], true);
+        if (is_array($value)) {
+            return $value;
         }
 
-        return false;
+        return [];
     }
 }

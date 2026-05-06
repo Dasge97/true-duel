@@ -5,51 +5,39 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\User;
-use PDO;
+use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
 
 final class UserRepository
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private EntityManagerInterface $entityManager)
     {
     }
 
     public function create(string $id, string $username, string $email, string $passwordHash): User
     {
-        $statement = $this->pdo->prepare(
-            'INSERT INTO auth_users (id, username, email, password_hash)
-             VALUES (:id, :username, :email, :password_hash)'
+        $user = new User(
+            $id,
+            strtolower($username),
+            strtolower($email),
+            $passwordHash,
+            new DateTimeImmutable(),
         );
-        $statement->execute([
-            ':id' => $id,
-            ':username' => strtolower($username),
-            ':email' => strtolower($email),
-            ':password_hash' => $passwordHash,
-        ]);
+        $this->entityManager->persist($user);
+        $this->entityManager->flush();
 
-        return new User($id, strtolower($username), strtolower($email), $passwordHash, gmdate('c'));
+        return $user;
     }
 
     public function findByUsernameOrEmail(string $identifier): ?User
     {
-        $statement = $this->pdo->prepare(
-            'SELECT id, username, email, password_hash, created_at
-             FROM auth_users
-             WHERE username = :identifier OR email = :identifier
-             LIMIT 1'
-        );
-        $statement->execute([':identifier' => strtolower($identifier)]);
-
-        $row = $statement->fetch();
-        if (!is_array($row)) {
-            return null;
-        }
-
-        return new User(
-            (string) $row['id'],
-            (string) $row['username'],
-            (string) $row['email'],
-            (string) $row['password_hash'],
-            (string) $row['created_at'],
-        );
+        return $this->entityManager->createQueryBuilder()
+            ->select('u')
+            ->from(User::class, 'u')
+            ->where('u.username = :identifier OR u.email = :identifier')
+            ->setParameter('identifier', strtolower($identifier))
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
     }
 }

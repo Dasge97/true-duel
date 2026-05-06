@@ -1,0 +1,12 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+
+  Doctrine\Migrations\DependencyFactory:
+    alias: doctrine.migrations.dependency_factory
+
+  App\:
+    resource: '../src/'
+    exclude:
+      - '../src/Entity/'

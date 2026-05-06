@@ -4,39 +4,71 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
-use PDO;
+use App\Entity\MatchOutcomeRule;
+use Doctrine\ORM\EntityManagerInterface;
 
 final class MatchOutcomeRuleRepository
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private EntityManagerInterface $entityManager)
     {
+    }
+
+    /** @return list<array{queueType:string,outcomeKey:string,globalMmrDelta:int,championMmrDelta:int,coins:int,gems:int,xp:int,masteryXp:int}> */
+    public function all(): array
+    {
+        $entities = $this->entityManager->createQueryBuilder()
+            ->select('r')
+            ->from(MatchOutcomeRule::class, 'r')
+            ->orderBy('r.queueType', 'ASC')
+            ->addOrderBy('r.outcomeKey', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return array_map(
+            static fn(MatchOutcomeRule $rule): array => $rule->toApiArray(),
+            $entities
+        );
     }
 
     /** @return array{globalMmrDelta:int,championMmrDelta:int,coins:int,gems:int,xp:int,masteryXp:int}|null */
     public function find(string $queueType, string $outcomeKey): ?array
     {
-        $statement = $this->pdo->prepare(
-            'SELECT global_mmr_delta, champion_mmr_delta, coins, gems, xp, mastery_xp
-             FROM match_outcome_rules
-             WHERE queue_type = :queue_type AND outcome_key = :outcome_key
-             LIMIT 1'
-        );
-        $statement->execute([
-            ':queue_type' => $queueType,
-            ':outcome_key' => $outcomeKey,
-        ]);
-        $row = $statement->fetch();
-        if (!is_array($row)) {
-            return null;
+        $entity = $this->entityManager->createQueryBuilder()
+            ->select('r')
+            ->from(MatchOutcomeRule::class, 'r')
+            ->where('r.queueType = :queueType')
+            ->andWhere('r.outcomeKey = :outcomeKey')
+            ->setParameter('queueType', $queueType)
+            ->setParameter('outcomeKey', $outcomeKey)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        return $entity instanceof MatchOutcomeRule ? $entity->toSettlementArray() : null;
+    }
+
+    /** @param list<mixed> $items */
+    public function replaceAll(array $items): void
+    {
+        $this->entityManager->createQuery('DELETE FROM App\Entity\MatchOutcomeRule r')->execute();
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $this->entityManager->persist(new MatchOutcomeRule(
+                (string) ($item['queueType'] ?? ''),
+                (string) ($item['outcomeKey'] ?? ''),
+                (int) ($item['globalMmrDelta'] ?? 0),
+                (int) ($item['championMmrDelta'] ?? 0),
+                (int) ($item['coins'] ?? 0),
+                (int) ($item['gems'] ?? 0),
+                (int) ($item['xp'] ?? 0),
+                (int) ($item['masteryXp'] ?? 0),
+            ));
         }
 
-        return [
-            'globalMmrDelta' => (int) ($row['global_mmr_delta'] ?? 0),
-            'championMmrDelta' => (int) ($row['champion_mmr_delta'] ?? 0),
-            'coins' => (int) ($row['coins'] ?? 0),
-            'gems' => (int) ($row['gems'] ?? 0),
-            'xp' => (int) ($row['xp'] ?? 0),
-            'masteryXp' => (int) ($row['mastery_xp'] ?? 0),
-        ];
+        $this->entityManager->flush();
     }
 }

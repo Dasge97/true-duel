@@ -4,24 +4,47 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use DateTimeImmutable;
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'player_profiles')]
 final class PlayerProfile
 {
     public function __construct(
+        #[ORM\Id]
+        #[ORM\Column(name: 'player_id', type: 'string', length: 36)]
         private string $playerId,
+        #[ORM\Column(name: 'display_name', type: 'string', length: 64)]
         private string $displayName,
+        #[ORM\Column(name: 'rank_label', type: 'string', length: 32)]
         private string $rankLabel,
+        #[ORM\Column(name: 'mmr_global', type: 'integer')]
         private int $mmrGlobal,
+        #[ORM\Column(type: 'string', length: 32)]
         private string $region,
+        #[ORM\Column(name: 'puntos_habilidad', type: 'integer')]
         private int $puntosHabilidad = 1000,
+        #[ORM\Column(name: 'titulo_competitivo', type: 'string', length: 64)]
         private string $tituloCompetitivo = 'Combatiente',
+        #[ORM\Column(type: 'integer')]
         private int $coins = 0,
+        #[ORM\Column(type: 'integer')]
         private int $gems = 0,
+        #[ORM\Column(name: 'experience_total', type: 'integer')]
         private int $experienceTotal = 0,
+        #[ORM\Column(type: 'integer')]
         private int $level = 1,
+        #[ORM\Column(name: 'total_matches', type: 'integer')]
         private int $totalMatches = 0,
+        #[ORM\Column(type: 'integer')]
         private int $wins = 0,
+        #[ORM\Column(type: 'integer')]
         private int $losses = 0,
+        #[ORM\Column(name: 'posicion_competitiva', type: 'integer', nullable: true)]
         private ?int $posicionCompetitiva = null,
+        #[ORM\Column(name: 'updated_at', type: 'datetime_immutable')]
+        private DateTimeImmutable $updatedAt = new DateTimeImmutable(),
     ) {
     }
 
@@ -98,5 +121,10 @@ final class PlayerProfile
     public function losses(): int
     {
         return $this->losses;
+    }
+
+    public function updatedAt(): DateTimeImmutable
+    {
+        return $this->updatedAt;
     }
 }

@@ -4,65 +4,59 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
-use PDO;
+use App\Entity\MissionCatalogItem;
+use Doctrine\ORM\EntityManagerInterface;
 
 final class MissionCatalogRepository
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private EntityManagerInterface $entityManager)
     {
     }
 
     /** @return list<array{id:string,title:string,target:int,rewardXp:int,rewardCoins:int}> */
     public function all(): array
     {
-        $statement = $this->pdo->query(
-            'SELECT id, title, target_value, reward_xp, reward_coins
-             FROM mission_catalog
-             ORDER BY sort_order ASC, id ASC'
+        $entities = $this->entityManager->createQueryBuilder()
+            ->select('m')
+            ->from(MissionCatalogItem::class, 'm')
+            ->orderBy('m.sortOrder', 'ASC')
+            ->addOrderBy('m.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return array_map(
+            static fn(MissionCatalogItem $item): array => $item->toApiArray(),
+            $entities
         );
-        $rows = $statement->fetchAll();
-        if (!is_array($rows)) {
-            return [];
-        }
-
-        $items = [];
-        foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $items[] = [
-                'id' => (string) ($row['id'] ?? ''),
-                'title' => (string) ($row['title'] ?? ''),
-                'target' => (int) ($row['target_value'] ?? 0),
-                'rewardXp' => (int) ($row['reward_xp'] ?? 0),
-                'rewardCoins' => (int) ($row['reward_coins'] ?? 0),
-            ];
-        }
-
-        return $items;
     }
 
     /** @return array{id:string,title:string,target:int,rewardXp:int,rewardCoins:int}|null */
     public function find(string $missionId): ?array
     {
-        $statement = $this->pdo->prepare(
-            'SELECT id, title, target_value, reward_xp, reward_coins
-             FROM mission_catalog
-             WHERE id = :id
-             LIMIT 1'
-        );
-        $statement->execute([':id' => $missionId]);
-        $row = $statement->fetch();
-        if (!is_array($row)) {
-            return null;
+        $entity = $this->entityManager->find(MissionCatalogItem::class, $missionId);
+        return $entity instanceof MissionCatalogItem ? $entity->toApiArray() : null;
+    }
+
+    /** @param list<mixed> $items */
+    public function replaceAll(array $items): void
+    {
+        $this->entityManager->createQuery('DELETE FROM App\Entity\MissionCatalogItem m')->execute();
+
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $this->entityManager->persist(new MissionCatalogItem(
+                (string) ($item['id'] ?? ''),
+                (string) ($item['title'] ?? ''),
+                (int) ($item['target'] ?? 0),
+                (int) ($item['rewardXp'] ?? 0),
+                (int) ($item['rewardCoins'] ?? 0),
+                (int) ($item['sortOrder'] ?? ($index + 1)),
+            ));
         }
 
-        return [
-            'id' => (string) ($row['id'] ?? ''),
-            'title' => (string) ($row['title'] ?? ''),
-            'target' => (int) ($row['target_value'] ?? 0),
-            'rewardXp' => (int) ($row['reward_xp'] ?? 0),
-            'rewardCoins' => (int) ($row['reward_coins'] ?? 0),
-        ];
+        $this->entityManager->flush();
     }
 }

@@ -102,8 +102,30 @@ $storeCatalog = request('GET', $baseUrl . '/v1/store/catalog', null, ['Authoriza
 assertStatus(200, $storeCatalog, 'store catalog');
 assertTrue(count((array) ($storeCatalog['body']['items'] ?? [])) >= 4, 'store should expose items');
 
+$homeSummary = request('GET', $baseUrl . '/v1/home/resumen', null, ['Authorization' => 'Bearer ' . $token1]);
+assertStatus(200, $homeSummary, 'home summary');
+assertTrue(array_key_exists('profile', $homeSummary['body']), 'home summary should expose profile');
+assertTrue(array_key_exists('misionesDiarias', $homeSummary['body']), 'home summary should expose daily missions');
+assertTrue(array_key_exists('ultimasPartidas', $homeSummary['body']), 'home summary should expose latest matches');
+assertTrue(array_key_exists('competitivo', $homeSummary['body']), 'home summary should expose competitive state');
+assertTrue(array_key_exists('actividad', $homeSummary['body']), 'home summary should expose activity');
+
 $purchase = request('POST', $baseUrl . '/v1/store/purchase', ['itemId' => 'avatar_legendario'], ['Authorization' => 'Bearer ' . $token1]);
 assertStatus(200, $purchase, 'store purchase');
+$purchaseRetry = request('POST', $baseUrl . '/v1/store/purchase', ['itemId' => 'avatar_legendario'], [
+    'Authorization' => 'Bearer ' . $token1,
+    'Idempotency-Key' => 'itest-purchase-' . $suffix,
+]);
+assertStatus(200, $purchaseRetry, 'store purchase with idempotency key');
+$purchaseRetryAgain = request('POST', $baseUrl . '/v1/store/purchase', ['itemId' => 'avatar_legendario'], [
+    'Authorization' => 'Bearer ' . $token1,
+    'Idempotency-Key' => 'itest-purchase-' . $suffix,
+]);
+assertStatus(200, $purchaseRetryAgain, 'store purchase retry should be idempotent');
+assertTrue(
+    (int) ($purchaseRetry['body']['coins'] ?? -1) === (int) ($purchaseRetryAgain['body']['coins'] ?? -2),
+    'store purchase retry should preserve wallet response'
+);
 
 $equip = request('POST', $baseUrl . '/v1/store/equip', ['itemId' => 'avatar_legendario'], ['Authorization' => 'Bearer ' . $token1]);
 assertStatus(200, $equip, 'store equip');
@@ -145,11 +167,17 @@ $ticket1 = request('GET', $baseUrl . '/v1/matchmaking/tickets/' . $enqueue1['bod
 assertStatus(200, $ticket1, 'ticket 1');
 $ticket2 = request('GET', $baseUrl . '/v1/matchmaking/tickets/' . $enqueue2['body']['ticketId'], null, ['Authorization' => 'Bearer ' . $token2]);
 assertStatus(200, $ticket2, 'ticket 2');
-assertTrue(in_array(($ticket1['body']['status'] ?? ''), ['queued', 'matched'], true), 'ticket 1 should expose canonical status');
+assertTrue(in_array(($ticket1['body']['status'] ?? ''), ['queued', 'matched', 'expired'], true), 'ticket 1 should expose canonical status');
 assertTrue(in_array(($ticket1['body']['queue'] ?? ''), ['ranked_pvp', 'ranked_bot', 'normal_bot'], true), 'ticket 1 should expose canonical queue mode');
+assertTrue(array_key_exists('canCancel', $ticket1['body']), 'ticket 1 should expose canCancel');
+assertTrue(array_key_exists('expiresInSec', $ticket1['body']), 'ticket 1 should expose expiresInSec');
+assertTrue(array_key_exists('matchStatus', $ticket1['body']), 'ticket 1 should expose matchStatus');
 
 $cancelProbe = request('POST', $baseUrl . '/v1/matchmaking/tickets/' . $enqueue1['body']['ticketId'] . '/cancel', [], ['Authorization' => 'Bearer ' . $token1]);
-assertStatus(200, $cancelProbe, 'cancel ticket should be idempotent');
+assertTrue(in_array($cancelProbe['status'], [200, 409], true), 'cancel ticket should be 200 or 409 depending on state');
+if (($cancelProbe['status'] ?? 0) === 409) {
+    assertTrue(($cancelProbe['body']['error']['code'] ?? '') === 'TICKET_CANNOT_CANCEL', 'matched ticket should not be cancellable');
+}
 
 $matchId = (string) ($ticket1['body']['matchId'] ?? '');
 if ($matchId === '') {
@@ -179,9 +207,24 @@ assertTrue(($wrongTurn['body']['error']['code'] ?? '') === 'NOT_YOUR_TURN', 'wro
 $okTurn = request('POST', $baseUrl . '/v1/matches/' . $matchId . '/turns', [
     'action' => 'attack',
     'clientStateVersion' => $serverVersion,
-], ['Authorization' => 'Bearer ' . $correctToken]);
+], [
+    'Authorization' => 'Bearer ' . $correctToken,
+    'Idempotency-Key' => 'itest-turn-' . $suffix,
+]);
 assertStatus(200, $okTurn, 'correct turn should pass');
 assertTrue((int) (($okTurn['body']['snapshot']['p1Charges'] ?? 0)) <= 2 || (int) (($okTurn['body']['snapshot']['playerCharges'] ?? 0)) <= 2, 'charge cap should be 2');
+$okTurnRetry = request('POST', $baseUrl . '/v1/matches/' . $matchId . '/turns', [
+    'action' => 'attack',
+    'clientStateVersion' => $serverVersion,
+], [
+    'Authorization' => 'Bearer ' . $correctToken,
+    'Idempotency-Key' => 'itest-turn-' . $suffix,
+]);
+assertStatus(200, $okTurnRetry, 'turn retry should be idempotent');
+assertTrue(
+    (int) (($okTurn['body']['serverStateVersion'] ?? 0)) === (int) (($okTurnRetry['body']['serverStateVersion'] ?? -1)),
+    'turn retry should return same serverStateVersion'
+);
 
 $winner = $okTurn['body']['snapshot']['winner'] ?? null;
 $guard = 0;

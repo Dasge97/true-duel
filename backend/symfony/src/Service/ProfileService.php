@@ -11,9 +11,11 @@ use App\Repository\PlayerProfileRepository;
 final class ProfileService
 {
     public function __construct(
-        private PlayerProfileRepository $profileRepository,
-        private MatchHistoryRepository $historyRepository,
-        private ChampionRatingRepository $championRatingRepository,
+        private readonly PlayerProfileRepository $profileRepository,
+        private readonly MatchHistoryRepository $historyRepository,
+        private readonly ChampionRatingRepository $championRatingRepository,
+        private readonly ProfileViewFactory $profileViewFactory,
+        private readonly HomeSummaryService $homeSummaryService,
     ) {
     }
 
@@ -28,28 +30,7 @@ final class ProfileService
 
         return [
             'status' => 200,
-            'data' => [
-                'playerId' => $profile->playerId(),
-                'name' => $profile->displayName(),
-                'rank' => $profile->rankLabel(),
-                'mmrGlobal' => $profile->mmrGlobal(),
-                'puntosHabilidad' => $profile->puntosHabilidad(),
-                'tituloCompetitivo' => $profile->tituloCompetitivo(),
-                'posicionCompetitiva' => $profile->posicionCompetitiva(),
-                'level' => $profile->level(),
-                'experienceTotal' => $profile->experienceTotal(),
-                'experienceToNextLevel' => RankProgression::experienceToNextLevel($profile->experienceTotal()),
-                'coins' => $profile->coins(),
-                'gems' => $profile->gems(),
-                'stats' => [
-                    'matches' => $profile->totalMatches(),
-                    'wins' => $profile->wins(),
-                    'losses' => $profile->losses(),
-                ],
-                'mmrByChampion' => $championRatings,
-                'freshnessSeconds' => 30,
-                'isFresh' => true,
-            ],
+            'data' => $this->profileViewFactory->profile($profile, $championRatings),
         ];
     }
 
@@ -57,15 +38,7 @@ final class ProfileService
     {
         $profiles = $this->profileRepository->findRanking();
         $ranking = array_map(
-            static fn($profile): array => [
-                'playerId' => $profile->playerId(),
-                'name' => $profile->displayName(),
-                'mmr' => $profile->mmrGlobal(),
-                'sp' => $profile->puntosHabilidad(),
-                'titulo' => $profile->tituloCompetitivo(),
-                'posicion' => $profile->posicionCompetitiva(),
-                'level' => $profile->level(),
-            ],
+            fn($profile): array => $this->profileViewFactory->rankingRow($profile),
             $profiles
         );
 
@@ -76,17 +49,7 @@ final class ProfileService
     {
         $profiles = $this->profileRepository->findLatest();
         $users = array_map(
-            static fn($profile): array => [
-                'playerId' => $profile->playerId(),
-                'name' => $profile->displayName(),
-                'rank' => $profile->rankLabel(),
-                'mmr' => $profile->mmrGlobal(),
-                'sp' => $profile->puntosHabilidad(),
-                'titulo' => $profile->tituloCompetitivo(),
-                'posicion' => $profile->posicionCompetitiva(),
-                'level' => $profile->level(),
-                'region' => $profile->region(),
-            ],
+            fn($profile): array => $this->profileViewFactory->userRow($profile),
             $profiles
         );
 
@@ -97,16 +60,15 @@ final class ProfileService
     {
         $history = $this->historyRepository->findLatestByPlayerId($playerId);
         $items = array_map(
-            static fn($entry): array => [
-                'matchId' => $entry->id(),
-                'result' => $entry->result(),
-                'enemy' => $entry->enemyName(),
-                'turns' => $entry->turns(),
-                'mmrDelta' => $entry->mmrDelta(),
-            ],
+            fn($entry): array => $this->profileViewFactory->historyEntry($entry),
             $history
         );
 
         return ['status' => 200, 'data' => ['matches' => $items]];
+    }
+
+    public function homeSummary(string $playerId): array
+    {
+        return $this->homeSummaryService->summary($playerId);
     }
 }

@@ -5,28 +5,27 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\MatchSettlement;
-use PDO;
+use Doctrine\DBAL\Connection;
 
 final class MatchSettlementRepository
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private Connection $connection)
     {
     }
 
     public function findByMatchAndPlayer(string $matchId, string $playerId): ?MatchSettlement
     {
-        $statement = $this->pdo->prepare(
+        $row = $this->connection->fetchAssociative(
             'SELECT match_id, player_id, global_mmr_delta, champion_mmr_delta, coins, gems, xp, mastery_xp, winner_ref
              FROM match_settlements
              WHERE match_id = :match_id AND player_id = :player_id
-             LIMIT 1'
+             LIMIT 1',
+            [
+                'match_id' => $matchId,
+                'player_id' => $playerId,
+            ]
         );
-        $statement->execute([
-            ':match_id' => $matchId,
-            ':player_id' => $playerId,
-        ]);
-        $row = $statement->fetch();
-        if (!is_array($row)) {
+        if ($row === false) {
             return null;
         }
 
@@ -54,21 +53,21 @@ final class MatchSettlementRepository
         int $masteryXp,
         string $winnerRef,
     ): MatchSettlement {
-        $statement = $this->pdo->prepare(
+        $this->connection->executeStatement(
             'INSERT INTO match_settlements (match_id, player_id, global_mmr_delta, champion_mmr_delta, coins, gems, xp, mastery_xp, winner_ref, created_at)
-             VALUES (:match_id, :player_id, :global_mmr_delta, :champion_mmr_delta, :coins, :gems, :xp, :mastery_xp, :winner_ref, NOW())'
+             VALUES (:match_id, :player_id, :global_mmr_delta, :champion_mmr_delta, :coins, :gems, :xp, :mastery_xp, :winner_ref, NOW())',
+            [
+                'match_id' => $matchId,
+                'player_id' => $playerId,
+                'global_mmr_delta' => $globalMmrDelta,
+                'champion_mmr_delta' => $championMmrDelta,
+                'coins' => $coins,
+                'gems' => $gems,
+                'xp' => $xp,
+                'mastery_xp' => $masteryXp,
+                'winner_ref' => $winnerRef,
+            ]
         );
-        $statement->execute([
-            ':match_id' => $matchId,
-            ':player_id' => $playerId,
-            ':global_mmr_delta' => $globalMmrDelta,
-            ':champion_mmr_delta' => $championMmrDelta,
-            ':coins' => $coins,
-            ':gems' => $gems,
-            ':xp' => $xp,
-            ':mastery_xp' => $masteryXp,
-            ':winner_ref' => $winnerRef,
-        ]);
 
         return new MatchSettlement($matchId, $playerId, $globalMmrDelta, $championMmrDelta, $coins, $gems, $xp, $masteryXp, $winnerRef);
     }

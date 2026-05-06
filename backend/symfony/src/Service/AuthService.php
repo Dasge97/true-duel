@@ -9,19 +9,21 @@ use App\Repository\EquipoJugadorRepositorio;
 use App\Repository\JugadorPersonajeRepositorio;
 use App\Repository\PlayerProfileRepository;
 use App\Repository\UserRepository;
-use PDO;
-use PDOException;
+use App\Support\UuidGenerator;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 
 final class AuthService
 {
     public function __construct(
-        private PDO $pdo,
+        private Connection $connection,
         private UserRepository $userRepository,
         private PlayerProfileRepository $profileRepository,
         private CatalogoPersonajesRepositorio $catalogoPersonajesRepositorio,
         private JugadorPersonajeRepositorio $jugadorPersonajeRepositorio,
         private EquipoJugadorRepositorio $equipoJugadorRepositorio,
         private TokenService $tokenService,
+        private UuidGenerator $uuidGenerator,
     ) {
     }
 
@@ -44,24 +46,25 @@ final class AuthService
             return ['status' => 422, 'data' => ['error' => ['code' => 'WEAK_PASSWORD', 'message' => 'Password must be at least 6 characters.']]];
         }
 
-        $playerId = $this->uuidV4();
+        $playerId = $this->uuidGenerator->v4();
         $hash = password_hash($password, PASSWORD_BCRYPT);
 
         try {
-            $this->pdo->beginTransaction();
+            $this->connection->beginTransaction();
             $this->userRepository->create($playerId, $username, $email, $hash);
             $this->profileRepository->create($playerId, $displayName, 'Bronce I', 1000, 'eu-west');
             $this->jugadorPersonajeRepositorio->inicializarParaJugador($playerId);
             $this->inicializarEquipoBase($playerId);
-            $this->pdo->commit();
-        } catch (PDOException $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            $this->connection->commit();
+        } catch (UniqueConstraintViolationException) {
+            if ($this->connection->isTransactionActive()) {
+                $this->connection->rollBack();
             }
 
-            $sqlState = (string) ($e->errorInfo[0] ?? '');
-            if ($sqlState === '23505') {
-                return ['status' => 409, 'data' => ['error' => ['code' => 'USER_ALREADY_EXISTS', 'message' => 'Username or email already exists.']]];
+            return ['status' => 409, 'data' => ['error' => ['code' => 'USER_ALREADY_EXISTS', 'message' => 'Username or email already exists.']]];
+        } catch (\Throwable) {
+            if ($this->connection->isTransactionActive()) {
+                $this->connection->rollBack();
             }
 
             return ['status' => 500, 'data' => ['error' => ['code' => 'REGISTER_FAILED', 'message' => 'Could not register user.']]];
@@ -104,14 +107,6 @@ final class AuthService
                 'user' => ['playerId' => $user->id(), 'name' => $displayName, 'username' => $user->username()],
             ],
         ];
-    }
-
-    private function uuidV4(): string
-    {
-        $bytes = random_bytes(16);
-        $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
-        $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
-        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     private function inicializarEquipoBase(string $jugadorId): void

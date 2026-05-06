@@ -1,0 +1,154 @@
+v1_auth_register:
+  path: /v1/auth/register
+  controller: App\Controller\Http\AuthHttpController::register
+  methods: [POST]
+
+v1_auth_login:
+  path: /v1/auth/login
+  controller: App\Controller\Http\AuthHttpController::login
+  methods: [POST]
+
+v1_ranking:
+  path: /v1/ranking
+  controller: App\Controller\Http/ProfileHttpController::ranking
+  methods: [GET]
+
+v1_users:
+  path: /v1/users
+  controller: App\Controller\Http/ProfileHttpController::users
+  methods: [GET]
+
+v1_profile_me:
+  path: /v1/profile
+  controller: App\Controller\Http/ProfileHttpController::me
+  methods: [GET]
+
+v1_home_summary:
+  path: /v1/home/resumen
+  controller: App\Controller\Http/ProfileHttpController::summary
+  methods: [GET]
+
+v1_profile_by_id:
+  path: /v1/profile/{playerId}
+  controller: App\Controller\Http/ProfileHttpController::profile
+  methods: [GET]
+
+v1_history:
+  path: /v1/history
+  controller: App\Controller\Http/ProfileHttpController::history
+  methods: [GET]
+
+v1_store_catalog:
+  path: /v1/store/catalog
+  controller: App\Controller\Http\StoreHttpController::catalog
+  methods: [GET]
+
+v1_store_inventory:
+  path: /v1/store/inventory
+  controller: App\Controller\Http\StoreHttpController::inventory
+  methods: [GET]
+
+v1_store_purchase:
+  path: /v1/store/purchase
+  controller: App\Controller\Http\StoreHttpController::purchase
+  methods: [POST]
+
+v1_store_equip:
+  path: /v1/store/equip
+  controller: App\Controller\Http\StoreHttpController::equip
+  methods: [POST]
+
+v1_missions_daily:
+  path: /v1/missions/daily
+  controller: App\Controller\Http\MissionHttpController::daily
+  methods: [GET]
+
+v1_missions_claim:
+  path: /v1/missions/claim
+  controller: App\Controller\Http\MissionHttpController::claim
+  methods: [POST]
+
+v1_personajes:
+  path: /v1/personajes
+  controller: App\Controller\Http\PlayerContentHttpController::personajesCatalog
+  methods: [GET]
+
+v1_personajes_mios:
+  path: /v1/personajes/mios
+  controller: App\Controller\Http\PlayerContentHttpController::personajesMine
+  methods: [GET]
+
+v1_personajes_desbloquear:
+  path: /v1/personajes/desbloquear
+  controller: App\Controller\Http\PlayerContentHttpController::personajesUnlock
+  methods: [POST]
+
+v1_equipo_get:
+  path: /v1/equipo
+  controller: App\Controller\Http\PlayerContentHttpController::teamGet
+  methods: [GET]
+
+v1_equipo_save:
+  path: /v1/equipo
+  controller: App\Controller\Http\PlayerContentHttpController::teamSave
+  methods: [POST, PUT]
+
+v1_bonificadores_partida:
+  path: /v1/bonificadores-partida
+  controller: App\Controller\Http\PlayerContentHttpController::modifiersCatalog
+  methods: [GET]
+
+v1_matchmaking_enqueue:
+  path: /v1/matchmaking/enqueue
+  controller: App\Controller\Http\GameplayHttpController::enqueue
+  methods: [POST]
+
+v1_matchmaking_ticket_status:
+  path: /v1/matchmaking/tickets/{ticketId}
+  controller: App\Controller\Http\GameplayHttpController::ticketStatus
+  methods: [GET]
+
+v1_matchmaking_ticket_cancel:
+  path: /v1/matchmaking/tickets/{ticketId}/cancel
+  controller: App\Controller\Http\GameplayHttpController::cancelTicket
+  methods: [POST]
+
+v1_match_turns:
+  path: /v1/matches/{matchId}/turns
+  controller: App\Controller\Http\GameplayHttpController::resolveTurn
+  methods: [POST]
+
+v1_match_get:
+  path: /v1/matches/{matchId}
+  controller: App\Controller\Http\GameplayHttpController::match
+  methods: [GET]
+
+v1_match_complete:
+  path: /v1/matches/{matchId}/complete
+  controller: App\Controller\Http\GameplayHttpController::complete
+  methods: [POST]
+
+v1_match_abandon:
+  path: /v1/matches/{matchId}/abandon
+  controller: App\Controller\Http\GameplayHttpController::abandon
+  methods: [POST]
+
+v1_admin_competitive_recalculate:
+  path: /v1/admin/competitivo/recalcular
+  controller: App\Controller\Http\AdminHttpController::recalculateCompetitive
+  methods: [POST]
+
+v1_admin_catalog_get:
+  path: /v1/admin/catalogos/{catalog}
+  controller: App\Controller\Http\AdminHttpController::getCatalog
+  methods: [GET]
+
+v1_admin_catalog_replace:
+  path: /v1/admin/catalogos/{catalog}
+  controller: App\Controller\Http\AdminHttpController::replaceCatalog
+  methods: [POST, PUT]
+
+health:
+  path: /health
+  controller: App\Controller\HealthController
+  methods: [GET]

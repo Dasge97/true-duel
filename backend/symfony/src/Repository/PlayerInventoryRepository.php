@@ -4,33 +4,26 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
-use PDO;
+use Doctrine\DBAL\Connection;
 
 final class PlayerInventoryRepository
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private Connection $connection)
     {
     }
 
     /** @return array<string, array{itemId:string,itemType:string,quantity:int,equipped:bool}> */
     public function findByPlayerAsMap(string $playerId): array
     {
-        $statement = $this->pdo->prepare(
+        $rows = $this->connection->fetchAllAssociative(
             'SELECT item_id, item_type, quantity, equipped
              FROM player_inventory
-             WHERE player_id = :player_id'
+             WHERE player_id = :player_id',
+            ['player_id' => $playerId]
         );
-        $statement->execute([':player_id' => $playerId]);
-        $rows = $statement->fetchAll();
-        if (!is_array($rows)) {
-            return [];
-        }
 
         $items = [];
         foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
             $itemId = (string) $row['item_id'];
             $items[$itemId] = [
                 'itemId' => $itemId,
@@ -45,33 +38,32 @@ final class PlayerInventoryRepository
 
     public function addItem(string $playerId, string $itemId, string $itemType): void
     {
-        $statement = $this->pdo->prepare(
+        $this->connection->executeStatement(
             'INSERT INTO player_inventory (player_id, item_id, item_type, quantity, equipped, acquired_at, updated_at)
              VALUES (:player_id, :item_id, :item_type, 1, FALSE, NOW(), NOW())
              ON CONFLICT (player_id, item_id)
-             DO UPDATE SET quantity = player_inventory.quantity + 1, updated_at = NOW()'
+             DO UPDATE SET quantity = player_inventory.quantity + 1, updated_at = NOW()',
+            [
+                'player_id' => $playerId,
+                'item_id' => $itemId,
+                'item_type' => $itemType,
+            ]
         );
-        $statement->execute([
-            ':player_id' => $playerId,
-            ':item_id' => $itemId,
-            ':item_type' => $itemType,
-        ]);
     }
 
     public function hasItem(string $playerId, string $itemId): bool
     {
-        $statement = $this->pdo->prepare(
+        $row = $this->connection->fetchAssociative(
             'SELECT quantity
              FROM player_inventory
              WHERE player_id = :player_id AND item_id = :item_id
-             LIMIT 1'
+             LIMIT 1',
+            [
+                'player_id' => $playerId,
+                'item_id' => $itemId,
+            ]
         );
-        $statement->execute([
-            ':player_id' => $playerId,
-            ':item_id' => $itemId,
-        ]);
-        $row = $statement->fetch();
-        if (!is_array($row)) {
+        if ($row === false) {
             return false;
         }
 
@@ -80,25 +72,25 @@ final class PlayerInventoryRepository
 
     public function equipItem(string $playerId, string $itemId, string $itemType): void
     {
-        $clear = $this->pdo->prepare(
+        $this->connection->executeStatement(
             'UPDATE player_inventory
              SET equipped = FALSE, updated_at = NOW()
-             WHERE player_id = :player_id AND item_type = :item_type'
+             WHERE player_id = :player_id AND item_type = :item_type',
+            [
+                'player_id' => $playerId,
+                'item_type' => $itemType,
+            ]
         );
-        $clear->execute([
-            ':player_id' => $playerId,
-            ':item_type' => $itemType,
-        ]);
 
-        $set = $this->pdo->prepare(
+        $this->connection->executeStatement(
             'UPDATE player_inventory
              SET equipped = TRUE, updated_at = NOW()
-             WHERE player_id = :player_id AND item_id = :item_id'
+             WHERE player_id = :player_id AND item_id = :item_id',
+            [
+                'player_id' => $playerId,
+                'item_id' => $itemId,
+            ]
         );
-        $set->execute([
-            ':player_id' => $playerId,
-            ':item_id' => $itemId,
-        ]);
     }
 
     private function toBool(mixed $value): bool

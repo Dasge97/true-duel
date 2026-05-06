@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use DateTimeImmutable;
+
 final class MatchmakingTicket
 {
     public function __construct(
@@ -16,6 +18,7 @@ final class MatchmakingTicket
         private int $mmr,
         private string $status,
         private ?string $matchedMatchId,
+        private ?DateTimeImmutable $createdAt = null,
     ) {
     }
 
@@ -62,5 +65,10 @@ final class MatchmakingTicket
     public function matchedMatchId(): ?string
     {
         return $this->matchedMatchId;
+    }
+
+    public function createdAt(): ?DateTimeImmutable
+    {
+        return $this->createdAt;
     }
 }

@@ -7,150 +7,65 @@ namespace App\Repository;
 use App\Entity\PlayerProfile;
 use App\Service\RankLabelResolver;
 use App\Service\RankProgression;
-use PDO;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
 use RuntimeException;
 
 final class PlayerProfileRepository
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(
+        private EntityManagerInterface $entityManager,
+        private Connection $connection,
+    )
     {
     }
 
     public function create(string $playerId, string $displayName, string $rankLabel, int $mmrGlobal, string $region): PlayerProfile
     {
-        $statement = $this->pdo->prepare(
-            'INSERT INTO player_profiles (player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, coins, gems, experience_total, level, total_matches, wins, losses, updated_at)
-             VALUES (:player_id, :display_name, :rank_label, :mmr_global, :region, 1000, :titulo_competitivo, 1000, 0, 0, 1, 0, 0, 0, NOW())'
+        $profile = new PlayerProfile(
+            $playerId,
+            $displayName,
+            $rankLabel,
+            $mmrGlobal,
+            $region,
+            1000,
+            'Combatiente',
+            1000,
         );
-        $statement->execute([
-            ':player_id' => $playerId,
-            ':display_name' => $displayName,
-            ':rank_label' => $rankLabel,
-            ':mmr_global' => $mmrGlobal,
-            ':region' => $region,
-            ':titulo_competitivo' => 'Combatiente',
-        ]);
+        $this->entityManager->persist($profile);
+        $this->entityManager->flush();
 
-        return new PlayerProfile($playerId, $displayName, $rankLabel, $mmrGlobal, $region, 1000, 'Combatiente');
+        return $profile;
     }
 
     public function findByPlayerId(string $playerId): ?PlayerProfile
     {
-        $statement = $this->pdo->prepare(
-            'SELECT player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, posicion_competitiva, coins, gems, experience_total, level, total_matches, wins, losses
-             FROM player_profiles
-             WHERE player_id = :player_id
-             LIMIT 1'
-        );
-        $statement->execute([':player_id' => $playerId]);
-        $row = $statement->fetch();
-        if (!is_array($row)) {
-            return null;
-        }
-
-        return new PlayerProfile(
-            (string) $row['player_id'],
-            (string) $row['display_name'],
-            (string) $row['rank_label'],
-            (int) $row['mmr_global'],
-            (string) $row['region'],
-            (int) ($row['puntos_habilidad'] ?? 1000),
-            (string) ($row['titulo_competitivo'] ?? 'Combatiente'),
-            (int) ($row['coins'] ?? 0),
-            (int) ($row['gems'] ?? 0),
-            (int) ($row['experience_total'] ?? 0),
-            (int) ($row['level'] ?? 1),
-            (int) ($row['total_matches'] ?? 0),
-            (int) ($row['wins'] ?? 0),
-            (int) ($row['losses'] ?? 0),
-            isset($row['posicion_competitiva']) ? (int) $row['posicion_competitiva'] : null,
-        );
+        return $this->entityManager->find(PlayerProfile::class, $playerId);
     }
 
     /** @return list<PlayerProfile> */
     public function findRanking(int $limit = 100): array
     {
-        $statement = $this->pdo->prepare(
-            'SELECT player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, posicion_competitiva, coins, gems, experience_total, level, total_matches, wins, losses
-             FROM player_profiles
-             ORDER BY puntos_habilidad DESC, mmr_global DESC, updated_at ASC
-             LIMIT :limit'
-        );
-        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $statement->execute();
-        $rows = $statement->fetchAll();
-        if (!is_array($rows)) {
-            return [];
-        }
-
-        $profiles = [];
-        foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $profiles[] = new PlayerProfile(
-                (string) $row['player_id'],
-                (string) $row['display_name'],
-                (string) $row['rank_label'],
-                (int) $row['mmr_global'],
-                (string) $row['region'],
-                (int) ($row['puntos_habilidad'] ?? 1000),
-                (string) ($row['titulo_competitivo'] ?? 'Combatiente'),
-                (int) ($row['coins'] ?? 0),
-                (int) ($row['gems'] ?? 0),
-                (int) ($row['experience_total'] ?? 0),
-                (int) ($row['level'] ?? 1),
-                (int) ($row['total_matches'] ?? 0),
-                (int) ($row['wins'] ?? 0),
-                (int) ($row['losses'] ?? 0),
-                isset($row['posicion_competitiva']) ? (int) $row['posicion_competitiva'] : null,
-            );
-        }
-
-        return $profiles;
+        return $this->entityManager->createQueryBuilder()
+            ->select('p')
+            ->from(PlayerProfile::class, 'p')
+            ->orderBy('p.puntosHabilidad', 'DESC')
+            ->addOrderBy('p.mmrGlobal', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
     }
 
     /** @return list<PlayerProfile> */
     public function findLatest(int $limit = 200): array
     {
-        $statement = $this->pdo->prepare(
-            'SELECT player_id, display_name, rank_label, mmr_global, region, puntos_habilidad, titulo_competitivo, posicion_competitiva, coins, gems, experience_total, level, total_matches, wins, losses
-             FROM player_profiles
-             ORDER BY updated_at DESC
-             LIMIT :limit'
-        );
-        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $statement->execute();
-        $rows = $statement->fetchAll();
-        if (!is_array($rows)) {
-            return [];
-        }
-
-        $profiles = [];
-        foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $profiles[] = new PlayerProfile(
-                (string) $row['player_id'],
-                (string) $row['display_name'],
-                (string) $row['rank_label'],
-                (int) $row['mmr_global'],
-                (string) $row['region'],
-                (int) ($row['puntos_habilidad'] ?? 1000),
-                (string) ($row['titulo_competitivo'] ?? 'Combatiente'),
-                (int) ($row['coins'] ?? 0),
-                (int) ($row['gems'] ?? 0),
-                (int) ($row['experience_total'] ?? 0),
-                (int) ($row['level'] ?? 1),
-                (int) ($row['total_matches'] ?? 0),
-                (int) ($row['wins'] ?? 0),
-                (int) ($row['losses'] ?? 0),
-                isset($row['posicion_competitiva']) ? (int) $row['posicion_competitiva'] : null,
-            );
-        }
-
-        return $profiles;
+        return $this->entityManager->createQueryBuilder()
+            ->select('p')
+            ->from(PlayerProfile::class, 'p')
+            ->orderBy('p.updatedAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
     }
 
     public function applyMatchOutcome(
@@ -171,7 +86,9 @@ final class PlayerProfileRepository
         $newExperience = max(0, $profile->experienceTotal() + $experienceDelta);
         $newLevel = RankProgression::levelFromExperience($newExperience);
 
-        $statement = $this->pdo->prepare(
+        $isWin = $result === 'win';
+        $isLoss = $result === 'loss';
+        $this->connection->executeStatement(
             'UPDATE player_profiles
              SET mmr_global = :mmr_global,
                  rank_label = :rank_label,
@@ -183,21 +100,19 @@ final class PlayerProfileRepository
                  wins = wins + :wins_delta,
                  losses = losses + :losses_delta,
                  updated_at = NOW()
-             WHERE player_id = :player_id'
+             WHERE player_id = :player_id',
+            [
+                'mmr_global' => $newMmr,
+                'rank_label' => $newRank,
+                'coins_delta' => $coinsDelta,
+                'gems_delta' => $gemsDelta,
+                'experience_total' => $newExperience,
+                'level' => $newLevel,
+                'wins_delta' => $isWin ? 1 : 0,
+                'losses_delta' => $isLoss ? 1 : 0,
+                'player_id' => $playerId,
+            ]
         );
-        $isWin = $result === 'win';
-        $isLoss = $result === 'loss';
-        $statement->execute([
-            ':mmr_global' => $newMmr,
-            ':rank_label' => $newRank,
-            ':coins_delta' => $coinsDelta,
-            ':gems_delta' => $gemsDelta,
-            ':experience_total' => $newExperience,
-            ':level' => $newLevel,
-            ':wins_delta' => $isWin ? 1 : 0,
-            ':losses_delta' => $isLoss ? 1 : 0,
-            ':player_id' => $playerId,
-        ]);
 
         return $this->findByPlayerId($playerId) ?? throw new RuntimeException('PROFILE_NOT_FOUND_AFTER_UPDATE');
     }
@@ -208,18 +123,16 @@ final class PlayerProfileRepository
             return true;
         }
 
-        $statement = $this->pdo->prepare(
+        return $this->connection->executeStatement(
             'UPDATE player_profiles
              SET coins = coins - :coins, updated_at = NOW()
              WHERE player_id = :player_id
-               AND coins >= :coins'
-        );
-        $statement->execute([
-            ':coins' => $coins,
-            ':player_id' => $playerId,
-        ]);
-
-        return $statement->rowCount() === 1;
+               AND coins >= :coins',
+            [
+                'coins' => $coins,
+                'player_id' => $playerId,
+            ]
+        ) === 1;
     }
 
     public function grantEconomyAndExperience(string $playerId, int $coinsDelta, int $gemsDelta, int $experienceDelta): ?PlayerProfile
@@ -232,40 +145,122 @@ final class PlayerProfileRepository
         $newExperience = max(0, $profile->experienceTotal() + $experienceDelta);
         $newLevel = RankProgression::levelFromExperience($newExperience);
 
-        $statement = $this->pdo->prepare(
+        $this->connection->executeStatement(
             'UPDATE player_profiles
              SET coins = coins + :coins_delta,
                  gems = gems + :gems_delta,
                  experience_total = :experience_total,
                  level = :level,
                  updated_at = NOW()
-             WHERE player_id = :player_id'
+             WHERE player_id = :player_id',
+            [
+                'coins_delta' => $coinsDelta,
+                'gems_delta' => $gemsDelta,
+                'experience_total' => $newExperience,
+                'level' => $newLevel,
+                'player_id' => $playerId,
+            ]
         );
-        $statement->execute([
-            ':coins_delta' => $coinsDelta,
-            ':gems_delta' => $gemsDelta,
-            ':experience_total' => $newExperience,
-            ':level' => $newLevel,
-            ':player_id' => $playerId,
-        ]);
 
         return $this->findByPlayerId($playerId);
     }
 
+    public function marcarActividadCompetitiva(string $playerId, bool $incrementarPartidas = true): void
+    {
+        $this->connection->executeStatement(
+            'UPDATE player_profiles
+             SET last_competitive_activity_at = NOW(),
+                 competitive_matches_played = competitive_matches_played + :incremento,
+                 updated_at = NOW()
+             WHERE player_id = :player_id',
+            [
+                'incremento' => $incrementarPartidas ? 1 : 0,
+                'player_id' => $playerId,
+            ]
+        );
+    }
+
+    public function aplicarDecayCompetitivo(int $daysWithoutActivity, int $spPenalty): int
+    {
+        return $this->connection->executeStatement(
+            "UPDATE player_profiles
+             SET puntos_habilidad = GREATEST(0, puntos_habilidad - :sp_penalty),
+                 updated_at = NOW()
+             WHERE last_competitive_activity_at IS NOT NULL
+               AND last_competitive_activity_at < NOW() - (:days || ' days')::interval",
+            [
+                'sp_penalty' => $spPenalty,
+                'days' => (string) $daysWithoutActivity,
+            ]
+        );
+    }
+
+    public function resetTitulosPorInactividad(array $eligiblePlayerIds): int
+    {
+        if ($eligiblePlayerIds === []) {
+            return $this->connection->executeStatement(
+                "UPDATE player_profiles
+                 SET titulo_competitivo = 'Combatiente',
+                     posicion_competitiva = NULL,
+                     updated_at = NOW()
+                 WHERE titulo_competitivo <> 'Combatiente' OR posicion_competitiva IS NOT NULL"
+            );
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($eligiblePlayerIds) as $index => $playerId) {
+            $key = ':player_' . $index;
+            $placeholders[] = $key;
+            $params[$key] = $playerId;
+        }
+
+        return $this->connection->executeStatement(
+            "UPDATE player_profiles
+             SET titulo_competitivo = 'Combatiente',
+                 posicion_competitiva = NULL,
+                 updated_at = NOW()
+             WHERE player_id NOT IN (" . implode(', ', $placeholders) . ')',
+            $params
+        );
+    }
+
+    /** @return list<string> */
+    public function findEligibleCompetitivePlayers(int $minMatches, int $windowDays): array
+    {
+        $rows = $this->connection->fetchFirstColumn(
+            "SELECT player_id
+             FROM player_profiles
+             WHERE competitive_matches_played >= 0
+               AND last_competitive_activity_at IS NOT NULL
+               AND last_competitive_activity_at >= NOW() - (:days || ' days')::interval",
+            [
+                'days' => (string) $windowDays,
+            ]
+        );
+
+        $eligible = [];
+        foreach ($rows as $value) {
+            if (is_string($value) && $value !== '') {
+                $eligible[] = $value;
+            }
+        }
+
+        return $eligible;
+    }
+
     public function aplicarPuntosHabilidad(string $playerId, int $deltaPuntos): ?PlayerProfile
     {
-        $statement = $this->pdo->prepare(
+        if ($this->connection->executeStatement(
             'UPDATE player_profiles
              SET puntos_habilidad = GREATEST(0, puntos_habilidad + :delta_puntos),
                  updated_at = NOW()
-             WHERE player_id = :player_id'
-        );
-        $statement->execute([
-            ':delta_puntos' => $deltaPuntos,
-            ':player_id' => $playerId,
-        ]);
-
-        if ($statement->rowCount() !== 1) {
+             WHERE player_id = :player_id',
+            [
+                'delta_puntos' => $deltaPuntos,
+                'player_id' => $playerId,
+            ]
+        ) !== 1) {
             return null;
         }
 
@@ -291,19 +286,19 @@ final class PlayerProfileRepository
             $posicion++;
         }
 
-        $statement = $this->pdo->prepare(
-            'UPDATE player_profiles
-             SET titulo_competitivo = :titulo,
-                 posicion_competitiva = :posicion,
-                 updated_at = NOW()
-             WHERE player_id = :player_id'
-        );
         foreach ($actualizaciones as $row) {
-            $statement->execute([
-                ':titulo' => $row['titulo'],
-                ':posicion' => $row['posicion'],
-                ':player_id' => $row['player_id'],
-            ]);
+            $this->connection->executeStatement(
+                'UPDATE player_profiles
+                 SET titulo_competitivo = :titulo,
+                     posicion_competitiva = :posicion,
+                     updated_at = NOW()
+                 WHERE player_id = :player_id',
+                [
+                    'titulo' => $row['titulo'],
+                    'posicion' => $row['posicion'],
+                    'player_id' => $row['player_id'],
+                ]
+            );
         }
     }
 

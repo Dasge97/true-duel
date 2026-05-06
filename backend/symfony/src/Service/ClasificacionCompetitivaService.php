@@ -4,82 +4,115 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Repository\CompetitiveMatchLogRepository;
 use App\Repository\PlayerProfileRepository;
-use App\Repository\TituloCompetitivoRepositorio;
+use App\Support\UuidGenerator;
+use Doctrine\DBAL\Connection;
 
 final class ClasificacionCompetitivaService
 {
     private const FACTOR_SP = 0.6;
+    private const DECAY_DAYS = 14;
+    private const DECAY_SP = 20;
 
     public function __construct(
-        private PlayerProfileRepository $playerProfileRepository,
-        private TituloCompetitivoRepositorio $tituloCompetitivoRepositorio,
+        private readonly Connection $connection,
+        private readonly PlayerProfileRepository $playerProfileRepository,
+        private readonly CompetitiveMatchLogRepository $competitiveMatchLogRepository,
+        private readonly CompetitiveBattleScoreService $competitiveBattleScoreService,
+        private readonly CompetitivePenaltyService $competitivePenaltyService,
+        private readonly CompetitiveTitleService $competitiveTitleService,
+        private readonly CompetitiveOpponentResolver $competitiveOpponentResolver,
+        private readonly UuidGenerator $uuidGenerator,
     ) {
     }
 
     /** @param array<string,mixed> $metricas */
-    public function procesarResultadoPartida(string $playerId, string $resultado, array $metricas): array
+    public function procesarResultadoPartida(string $playerId, string $matchId, string $resultado, array $metricas): array
     {
-        $battleScore = $this->calcularBattleScore($resultado, $metricas);
-        $deltaSp = (int) round(($battleScore - 50) * self::FACTOR_SP);
+        $battleScore = $this->competitiveBattleScoreService->calculate($resultado, $metricas);
+        $deltaSpBase = (int) round(($battleScore - 50) * self::FACTOR_SP);
+        $opponentPlayerId = $this->competitiveOpponentResolver->resolve($matchId, $playerId);
+        $antiFarmPenalty = $opponentPlayerId !== null
+            ? $this->competitivePenaltyService->antiFarmPenalty($playerId, $opponentPlayerId)
+            : 0;
+        $deltaSp = $deltaSpBase - $antiFarmPenalty;
         $perfil = $this->playerProfileRepository->aplicarPuntosHabilidad($playerId, $deltaSp);
-
-        $tramos = $this->tituloCompetitivoRepositorio->tramosActivos();
-        if ($tramos !== []) {
-            $this->playerProfileRepository->aplicarTitulosCompetitivos($tramos);
-            $perfil = $this->playerProfileRepository->findByPlayerId($playerId);
-        }
+        $this->playerProfileRepository->marcarActividadCompetitiva($playerId);
+        $this->competitiveMatchLogRepository->add(
+            $this->uuidGenerator->v4(),
+            $matchId,
+            $playerId,
+            $opponentPlayerId,
+            $resultado,
+            'ranked',
+            false,
+            $battleScore,
+            $deltaSp,
+        );
+        $this->competitiveTitleService->recalculate();
+        $perfil = $this->playerProfileRepository->findByPlayerId($playerId);
 
         return [
             'battleScore' => $battleScore,
             'deltaSp' => $deltaSp,
+            'deltaSpBase' => $deltaSpBase,
+            'antiFarmPenalty' => $antiFarmPenalty,
             'spActual' => $perfil?->puntosHabilidad() ?? 0,
             'tituloCompetitivo' => $perfil?->tituloCompetitivo() ?? 'Combatiente',
         ];
     }
 
-    /** @param array<string,mixed> $metricas */
-    private function calcularBattleScore(string $resultado, array $metricas): int
+    public function procesarAbandono(string $playerId, string $matchId): array
     {
-        $danoInfligido = max(0, (int) ($metricas['damageDealt'] ?? 0));
-        $danoRecibido = max(0, (int) ($metricas['damageTaken'] ?? 0));
-        $turnos = max(1, (int) ($metricas['turns'] ?? 1));
-        $ataques = max(0, (int) ($metricas['attackCount'] ?? 0));
-        $defensas = max(0, (int) ($metricas['defendCount'] ?? 0));
-        $especiales = max(0, (int) ($metricas['specialCount'] ?? 0));
-        $mitigacion = max(0, (int) ($metricas['mitigationTotal'] ?? 0));
+        $opponentPlayerId = $this->competitiveOpponentResolver->resolve($matchId, $playerId);
+        $abandonPenalty = $this->competitivePenaltyService->abandonPenalty();
+        $this->playerProfileRepository->aplicarPuntosHabilidad($playerId, -$abandonPenalty);
+        $this->playerProfileRepository->marcarActividadCompetitiva($playerId, false);
+        $this->competitiveMatchLogRepository->add(
+            $this->uuidGenerator->v4(),
+            $matchId,
+            $playerId,
+            $opponentPlayerId,
+            'loss',
+            'ranked',
+            true,
+            0,
+            -$abandonPenalty,
+        );
 
-        $resultadoPts = match ($resultado) {
-            'win' => 35,
-            'draw' => 18,
-            default => 5,
-        };
+        $this->competitiveTitleService->recalculate();
+        $perfil = $this->playerProfileRepository->findByPlayerId($playerId);
 
-        $ratioDano = $danoRecibido > 0 ? ($danoInfligido / $danoRecibido) : ($danoInfligido > 0 ? 2.0 : 1.0);
-        $ejecucion = (int) round(min(25.0, max(0.0, 8.0 + ($ratioDano * 8.5))));
+        return [
+            'deltaSp' => -$abandonPenalty,
+            'spActual' => $perfil?->puntosHabilidad() ?? 0,
+            'tituloCompetitivo' => $perfil?->tituloCompetitivo() ?? 'Combatiente',
+            'abandoned' => true,
+        ];
+    }
 
-        $economiaTurnos = max(0.0, 1 - (($turnos - 10) / 30));
-        $usoEspecial = min(1.0, $especiales / 3);
-        $eficiencia = (int) round(min(20.0, max(0.0, ($economiaTurnos * 12.0) + ($usoEspecial * 8.0))));
-
-        $riesgo = (int) round(min(10.0, max(0.0, ($especiales * 2.0) + ($ataques * 0.4) - ($defensas * 0.8))));
-
-        $penalizacion = 0;
-        if ($resultado === 'loss') {
-            $penalizacion += 8;
+    public function ejecutarJobCompetitivo(): array
+    {
+        $this->connection->beginTransaction();
+        try {
+            $decayed = $this->playerProfileRepository->aplicarDecayCompetitivo(self::DECAY_DAYS, self::DECAY_SP);
+            $this->competitiveTitleService->recalculate();
+            $this->connection->commit();
+        } catch (\Throwable $e) {
+            if ($this->connection->isTransactionActive()) {
+                $this->connection->rollBack();
+            }
+            throw $e;
         }
-        if ($danoInfligido < max(25, (int) floor($turnos * 2.5))) {
-            $penalizacion += 6;
-        }
-        if ($mitigacion < 8 && $defensas >= 3) {
-            $penalizacion += 4;
-        }
-        if ($especiales === 0 && $turnos >= 12) {
-            $penalizacion += 2;
-        }
 
-        $total = $resultadoPts + $ejecucion + $eficiencia + $riesgo - $penalizacion;
-        return max(0, min(100, $total));
+        return [
+            'decayedProfiles' => $decayed,
+            'decayDays' => self::DECAY_DAYS,
+            'decaySpPenalty' => self::DECAY_SP,
+            'titleActivityWindowDays' => $this->competitiveTitleService->activityWindowDays(),
+            'titleActivityMinMatches' => $this->competitiveTitleService->activityMinMatches(),
+        ];
     }
 }
 

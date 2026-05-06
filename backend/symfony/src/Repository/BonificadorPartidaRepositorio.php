@@ -4,56 +4,54 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
-use PDO;
+use App\Entity\MatchBooster;
+use Doctrine\ORM\EntityManagerInterface;
 
 final class BonificadorPartidaRepositorio
 {
-    public function __construct(private PDO $pdo)
+    public function __construct(private EntityManagerInterface $entityManager)
     {
     }
 
     /** @return list<array<string, mixed>> */
     public function todos(): array
     {
-        $sentencia = $this->pdo->query(
-            'SELECT id, nombre, categoria_volatilidad, descripcion, reglas_json, activo, orden
-             FROM bonificadores_partida
-             WHERE activo = TRUE
-             ORDER BY orden ASC, id ASC'
+        $entities = $this->entityManager->createQueryBuilder()
+            ->select('b')
+            ->from(MatchBooster::class, 'b')
+            ->where('b.active = true')
+            ->orderBy('b.sortOrder', 'ASC')
+            ->addOrderBy('b.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return array_map(
+            static fn(MatchBooster $booster): array => $booster->toApiArray(),
+            $entities
         );
-        $filas = $sentencia->fetchAll();
-        if (!is_array($filas)) {
-            return [];
-        }
-
-        $items = [];
-        foreach ($filas as $fila) {
-            if (!is_array($fila)) {
-                continue;
-            }
-            $items[] = [
-                'id' => (string) ($fila['id'] ?? ''),
-                'nombre' => (string) ($fila['nombre'] ?? ''),
-                'categoriaVolatilidad' => (string) ($fila['categoria_volatilidad'] ?? ''),
-                'descripcion' => (string) ($fila['descripcion'] ?? ''),
-                'reglas' => $this->decodificarJson($fila['reglas_json'] ?? '{}'),
-                'orden' => (int) ($fila['orden'] ?? 0),
-            ];
-        }
-
-        return $items;
     }
 
-    /** @return array<string, mixed> */
-    private function decodificarJson(mixed $valor): array
+    /** @param list<mixed> $items */
+    public function replaceAll(array $items): void
     {
-        if (is_array($valor)) {
-            return $valor;
+        $this->entityManager->createQuery('DELETE FROM App\Entity\MatchBooster b')->execute();
+
+        foreach ($items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $this->entityManager->persist(new MatchBooster(
+                (string) ($item['id'] ?? ''),
+                (string) ($item['nombre'] ?? ''),
+                (string) ($item['categoriaVolatilidad'] ?? ''),
+                (string) ($item['descripcion'] ?? ''),
+                is_array($item['reglas'] ?? null) ? (array) $item['reglas'] : [],
+                array_key_exists('activo', $item) ? !empty($item['activo']) : true,
+                (int) ($item['orden'] ?? ($index + 1)),
+            ));
         }
-        if (!is_string($valor) || $valor === '') {
-            return [];
-        }
-        $decodificado = json_decode($valor, true);
-        return is_array($decodificado) ? $decodificado : [];
+
+        $this->entityManager->flush();
     }
 }

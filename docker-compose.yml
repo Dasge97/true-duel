@@ -26,7 +26,11 @@ services:
         condition: service_healthy
     environment:
       APP_ENV: dev
+      ADMIN_API_KEY: true-duel-admin-dev
       DATABASE_URL: pgsql:host=db;port=5432;dbname=true_duel
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_NAME: true_duel
       DATABASE_USER: true_duel
       DATABASE_PASSWORD: true_duel
     ports:
@@ -35,7 +39,7 @@ services:
       - ./backend/symfony:/app
     working_dir: /app
     command: >
-      sh -lc "php scripts/bootstrap_db.php && php -S 0.0.0.0:8080 -t public"
+      sh -lc "php bin/console doctrine:migrations:migrate --no-interaction && php bin/console app:product:seed && php -S 0.0.0.0:8080 -t public"
 
 volumes:
   true_duel_db_data:
