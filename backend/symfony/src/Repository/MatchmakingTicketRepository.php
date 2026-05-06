@@ -16,6 +16,7 @@ final class MatchmakingTicketRepository
     public function create(
         string $id,
         string $queueType,
+        string $mode,
         string $playerId,
         string $championId,
         string $region,
@@ -24,12 +25,13 @@ final class MatchmakingTicketRepository
         ?string $matchedMatchId,
     ): MatchmakingTicket {
         $statement = $this->pdo->prepare(
-            'INSERT INTO matchmaking_tickets (id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id, created_at)
-             VALUES (:id, :queue_type, :player_id, :champion_id, :region, :mmr, :status, :matched_match_id, NOW())'
+            'INSERT INTO matchmaking_tickets (id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id, created_at)
+             VALUES (:id, :queue_type, :mode, :player_id, :champion_id, :region, :mmr, :status, :matched_match_id, NOW())'
         );
         $statement->execute([
             ':id' => $id,
             ':queue_type' => $queueType,
+            ':mode' => $mode,
             ':player_id' => $playerId,
             ':champion_id' => $championId,
             ':region' => $region,
@@ -38,13 +40,13 @@ final class MatchmakingTicketRepository
             ':matched_match_id' => $matchedMatchId,
         ]);
 
-        return new MatchmakingTicket($id, $queueType, $playerId, $championId, $region, $mmr, $status, $matchedMatchId);
+        return new MatchmakingTicket($id, $queueType, $mode, $playerId, $championId, $region, $mmr, $status, $matchedMatchId);
     }
 
     public function findById(string $id): ?MatchmakingTicket
     {
         $statement = $this->pdo->prepare(
-            'SELECT id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id
+            'SELECT id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id
              FROM matchmaking_tickets
              WHERE id = :id
              LIMIT 1'
@@ -58,6 +60,7 @@ final class MatchmakingTicketRepository
         return new MatchmakingTicket(
             (string) $row['id'],
             (string) $row['queue_type'],
+            (string) ($row['mode'] ?? $this->defaultMode((string) $row['queue_type'])),
             (string) $row['player_id'],
             (string) $row['champion_id'],
             (string) ($row['region'] ?? 'eu-west'),
@@ -70,7 +73,7 @@ final class MatchmakingTicketRepository
     public function findQueuedByPlayerAndQueue(string $playerId, string $queueType): ?MatchmakingTicket
     {
         $statement = $this->pdo->prepare(
-            'SELECT id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id
+            'SELECT id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id
              FROM matchmaking_tickets
              WHERE player_id = :player_id
                AND queue_type = :queue_type
@@ -91,6 +94,7 @@ final class MatchmakingTicketRepository
         return new MatchmakingTicket(
             (string) $row['id'],
             (string) $row['queue_type'],
+            (string) ($row['mode'] ?? $this->defaultMode((string) $row['queue_type'])),
             (string) $row['player_id'],
             (string) $row['champion_id'],
             (string) ($row['region'] ?? 'eu-west'),
@@ -110,7 +114,7 @@ final class MatchmakingTicketRepository
     ): ?MatchmakingTicket
     {
         $statement = $this->pdo->prepare(
-            'SELECT id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id
+            'SELECT id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id
              FROM matchmaking_tickets
              WHERE id <> :exclude_id
                AND player_id <> :exclude_player_id
@@ -137,6 +141,7 @@ final class MatchmakingTicketRepository
         return new MatchmakingTicket(
             (string) $row['id'],
             (string) $row['queue_type'],
+            (string) ($row['mode'] ?? $this->defaultMode((string) $row['queue_type'])),
             (string) $row['player_id'],
             (string) $row['champion_id'],
             (string) ($row['region'] ?? 'eu-west'),
@@ -177,5 +182,20 @@ final class MatchmakingTicketRepository
         ]);
 
         return $statement->rowCount() === 1;
+    }
+
+    public function cancelIfActive(string $ticketId): void
+    {
+        $statement = $this->pdo->prepare(
+            "UPDATE matchmaking_tickets
+             SET status = 'cancelled'
+             WHERE id = :id AND status IN ('creating', 'queued')"
+        );
+        $statement->execute([':id' => $ticketId]);
+    }
+
+    private function defaultMode(string $queueType): string
+    {
+        return $queueType === 'ranked' ? 'ranked_pvp' : 'normal_bot';
     }
 }

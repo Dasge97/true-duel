@@ -128,14 +128,14 @@ assertStatus(200, $select, 'select champion');
 
 $region = 'itest-region-' . $suffix;
 $enqueue1 = request('POST', $baseUrl . '/v1/matchmaking/enqueue', [
-    'queue' => 'ranked',
+    'mode' => 'ranked_pvp',
     'championId' => 'assassin',
     'region' => $region,
 ], ['Authorization' => 'Bearer ' . $token1]);
 assertTrue(in_array($enqueue1['status'], [200, 202], true), 'enqueue user 1 should return 200/202');
 
 $enqueue2 = request('POST', $baseUrl . '/v1/matchmaking/enqueue', [
-    'queue' => 'ranked',
+    'mode' => 'ranked_pvp',
     'championId' => 'bruiser',
     'region' => $region,
 ], ['Authorization' => 'Bearer ' . $token2]);
@@ -145,6 +145,11 @@ $ticket1 = request('GET', $baseUrl . '/v1/matchmaking/tickets/' . $enqueue1['bod
 assertStatus(200, $ticket1, 'ticket 1');
 $ticket2 = request('GET', $baseUrl . '/v1/matchmaking/tickets/' . $enqueue2['body']['ticketId'], null, ['Authorization' => 'Bearer ' . $token2]);
 assertStatus(200, $ticket2, 'ticket 2');
+assertTrue(in_array(($ticket1['body']['status'] ?? ''), ['queued', 'matched'], true), 'ticket 1 should expose canonical status');
+assertTrue(in_array(($ticket1['body']['queue'] ?? ''), ['ranked_pvp', 'ranked_bot', 'normal_bot'], true), 'ticket 1 should expose canonical queue mode');
+
+$cancelProbe = request('POST', $baseUrl . '/v1/matchmaking/tickets/' . $enqueue1['body']['ticketId'] . '/cancel', [], ['Authorization' => 'Bearer ' . $token1]);
+assertStatus(200, $cancelProbe, 'cancel ticket should be idempotent');
 
 $matchId = (string) ($ticket1['body']['matchId'] ?? '');
 if ($matchId === '') {
@@ -176,6 +181,7 @@ $okTurn = request('POST', $baseUrl . '/v1/matches/' . $matchId . '/turns', [
     'clientStateVersion' => $serverVersion,
 ], ['Authorization' => 'Bearer ' . $correctToken]);
 assertStatus(200, $okTurn, 'correct turn should pass');
+assertTrue((int) (($okTurn['body']['snapshot']['p1Charges'] ?? 0)) <= 2 || (int) (($okTurn['body']['snapshot']['playerCharges'] ?? 0)) <= 2, 'charge cap should be 2');
 
 $winner = $okTurn['body']['snapshot']['winner'] ?? null;
 $guard = 0;
@@ -207,5 +213,7 @@ assertTrue(
     (int) ($complete1['body']['mmr']['globalDelta'] ?? 0) === (int) ($complete1Again['body']['mmr']['globalDelta'] ?? 99999),
     'complete should be idempotent for player 1'
 );
+assertTrue(array_key_exists('damageDealt', $complete1['body']), 'complete response should expose telemetry damageDealt');
+assertTrue(array_key_exists('mitigationTotal', $complete1['body']), 'complete response should expose telemetry mitigationTotal');
 
 fwrite(STDOUT, "[PASS] api_contracts_integration\n");

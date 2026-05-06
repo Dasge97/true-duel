@@ -9,6 +9,7 @@ final class MatchmakingTicket
     public function __construct(
         private string $id,
         private string $queueType,
+        private string $mode,
         private string $playerId,
         private string $championId,
         private string $region,
@@ -31,6 +32,11 @@ final class MatchmakingTicket
     public function playerId(): string
     {
         return $this->playerId;
+    }
+
+    public function mode(): string
+    {
+        return $this->mode;
     }
 
     public function championId(): string

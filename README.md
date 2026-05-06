@@ -2,6 +2,9 @@
 
 MVP jugable de combate 1v1 por turnos con flujo API-first (sin fallback offline/mock en la app).
 
+Este repositorio se enfoca en **Flutter mobile (`mobile/flutter`) + API PHP (`backend/symfony`)**.
+No se mantiene frontend web estático en la raíz del proyecto.
+
 ## Estado MVP
 
 - Flujo jugable end-to-end en Flutter: inicio -> cola -> combate por turnos -> resultado.

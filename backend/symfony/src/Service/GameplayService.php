@@ -45,9 +45,11 @@ final class GameplayService
     /** @param array<string, mixed> $body */
     public function enqueue(string $playerId, array $body): array
     {
-        $queue = strtolower((string) ($body['queue'] ?? 'normal'));
+        $selection = $this->resolveQueueSelection($body);
+        $queue = $selection['queue'];
+        $mode = $selection['mode'];
         $championId = strtolower((string) ($body['championId'] ?? ''));
-        $vsBot = (bool) ($body['vsBot'] ?? false);
+        $vsBot = $selection['vsBot'];
 
         if ($this->championCatalogRepository->find($championId) === null) {
             return ['status' => 422, 'data' => ['error' => ['code' => 'INVALID_CHAMPION', 'message' => 'Champion outside MVP roster.']]];
@@ -60,13 +62,14 @@ final class GameplayService
         if ($queue === 'ranked' && !$vsBot) {
             $existingQueued = $this->ticketRepository->findQueuedByPlayerAndQueue($playerId, 'ranked');
             if ($existingQueued !== null) {
-                return ['status' => 202, 'data' => ['ticketId' => $existingQueued->id(), 'etaSec' => 20, 'queue' => 'ranked']];
+                return ['status' => 202, 'data' => $this->ticketPayload($existingQueued, 20)];
             }
 
             $profile = $this->profileRepository->findByPlayerId($playerId);
             $ticket = $this->ticketRepository->create(
                 $this->uuidV4(),
                 'ranked',
+                $mode,
                 $playerId,
                 $championId,
                 strtolower((string) ($body['region'] ?? 'eu-west')),
@@ -77,14 +80,14 @@ final class GameplayService
 
             $matchId = $this->tryMatchRankedTicket($ticket->id());
             if ($matchId !== null) {
-                return ['status' => 200, 'data' => ['ticketId' => $ticket->id(), 'etaSec' => 0, 'queue' => 'ranked', 'matchId' => $matchId]];
+                return ['status' => 200, 'data' => $this->ticketPayload($ticket, 0, $matchId, 'matched')];
             }
 
-            return ['status' => 202, 'data' => ['ticketId' => $ticket->id(), 'etaSec' => 20, 'queue' => 'ranked']];
+            return ['status' => 202, 'data' => $this->ticketPayload($ticket, 20)];
         }
 
-        $queueType = in_array($queue, ['ranked', 'ranked_bot'], true) ? 'ranked' : 'bot';
-        return $this->startBotMatch($playerId, $championId, $queueType);
+        $queueType = $mode === 'ranked_bot' ? 'ranked' : 'bot';
+        return $this->startBotMatch($playerId, $championId, $queueType, $mode);
     }
 
     public function ticketStatus(string $playerId, string $ticketId): array
@@ -97,15 +100,25 @@ final class GameplayService
             return ['status' => 403, 'data' => ['error' => ['code' => 'FORBIDDEN', 'message' => 'Ticket does not belong to player.']]];
         }
 
-        return [
-            'status' => 200,
-            'data' => [
-                'ticketId' => $ticket->id(),
-                'status' => $ticket->status(),
-                'queue' => $ticket->queueType(),
-                'matchId' => $ticket->matchedMatchId(),
-            ],
-        ];
+        return ['status' => 200, 'data' => $this->ticketPayload($ticket, $ticket->status() === 'matched' ? 0 : 20)];
+    }
+
+    public function cancelTicket(string $playerId, string $ticketId): array
+    {
+        $ticket = $this->ticketRepository->findById($ticketId);
+        if ($ticket === null) {
+            return ['status' => 404, 'data' => ['error' => ['code' => 'TICKET_NOT_FOUND', 'message' => 'Ticket not found.']]];
+        }
+        if ($ticket->playerId() !== $playerId) {
+            return ['status' => 403, 'data' => ['error' => ['code' => 'FORBIDDEN', 'message' => 'Ticket does not belong to player.']]];
+        }
+
+        if ($ticket->status() !== 'matched' && $ticket->status() !== 'cancelled') {
+            $this->ticketRepository->cancelIfActive($ticketId);
+            $ticket = $this->ticketRepository->findById($ticketId) ?? $ticket;
+        }
+
+        return ['status' => 200, 'data' => $this->ticketPayload($ticket, 0)];
     }
 
     public function match(string $playerId, string $matchId): array
@@ -128,6 +141,8 @@ final class GameplayService
                 'p2Id' => $match->opponentPlayerId(),
                 'botName' => $match->botName(),
                 'state' => $match->state(),
+                'recentEvents' => (array) (($match->state()['recentEvents'] ?? [])),
+                'lastRivalAction' => (string) (($match->state()['lastRivalAction'] ?? '')),
             ],
         ];
     }
@@ -194,7 +209,7 @@ final class GameplayService
         $damageToPlayer = 0;
 
         if ($playerAction === 'defend') {
-            $playerCharges = min(3, $playerCharges + 1);
+            $playerCharges = min(2, $playerCharges + 1);
         } elseif ($playerAction === 'special' && $playerCharges >= 2) {
             $damageToEnemy = 18;
             $playerCharges -= 2;
@@ -203,7 +218,7 @@ final class GameplayService
         }
 
         if ($botAction === 'defend') {
-            $enemyCharges = min(3, $enemyCharges + 1);
+            $enemyCharges = min(2, $enemyCharges + 1);
             $damageToEnemy = (int) floor($damageToEnemy * 0.5);
         } elseif ($botAction === 'special' && $enemyCharges >= 2) {
             $damageToPlayer = 16;
@@ -243,6 +258,20 @@ final class GameplayService
             'playerCharges' => $playerCharges,
             'enemyCharges' => $enemyCharges,
             'winner' => $winner,
+            'recentEvents' => $this->pushRecentEvent((array) ($state['recentEvents'] ?? []), [
+                'turn' => $turnNo,
+                'playerAction' => $playerAction,
+                'rivalAction' => $botAction,
+                'damageToEnemy' => $damageToEnemy,
+                'damageToPlayer' => $damageToPlayer,
+            ]),
+            'lastRivalAction' => $botAction,
+            'attackCount' => (int) ($state['attackCount'] ?? 0) + ($playerAction === 'attack' ? 1 : 0),
+            'defendCount' => (int) ($state['defendCount'] ?? 0) + ($playerAction === 'defend' ? 1 : 0),
+            'specialCount' => (int) ($state['specialCount'] ?? 0) + ($playerAction === 'special' ? 1 : 0),
+            'damageDealt' => (int) ($state['damageDealt'] ?? 0) + $damageToEnemy,
+            'damageTaken' => (int) ($state['damageTaken'] ?? 0) + $damageToPlayer,
+            'mitigationTotal' => (int) ($state['mitigationTotal'] ?? 0) + ($playerAction === 'defend' ? (int) floor(($botAction === 'special' ? 16 : 10) * 0.5) : 0),
             'playerChampionId' => (string) ($state['playerChampionId'] ?? 'assassin'),
             'enemyChampionId' => (string) ($state['enemyChampionId'] ?? 'assassin'),
         ];
@@ -331,7 +360,7 @@ final class GameplayService
         $damageToTarget = 0;
 
         if ($action === 'defend') {
-            $actorCharges = min(3, $actorCharges + 1);
+            $actorCharges = min(2, $actorCharges + 1);
             $actorGuarding = true;
         } elseif ($action === 'special' && $actorCharges >= 2) {
             $damageToTarget = 18;
@@ -370,6 +399,16 @@ final class GameplayService
         $newState['turnNo'] = $turnNo;
         $newState['winner'] = $winner;
         $newState['currentPlayerId'] = $status === 'completed' ? null : $opponentId;
+        $newState['lastRivalAction'] = $action;
+        $newState['recentEvents'] = $this->pushRecentEvent((array) ($state['recentEvents'] ?? []), [
+            'turn' => $turnNo,
+            'actorId' => $actorId,
+            'action' => $action,
+            'damage' => $damageToTarget,
+        ]);
+        $newState['attackCount'] = (int) ($state['attackCount'] ?? 0) + ($action === 'attack' ? 1 : 0);
+        $newState['defendCount'] = (int) ($state['defendCount'] ?? 0) + ($action === 'defend' ? 1 : 0);
+        $newState['specialCount'] = (int) ($state['specialCount'] ?? 0) + ($action === 'special' ? 1 : 0);
 
         $turnResult = [
             'actorId' => $actorId,
@@ -477,7 +516,8 @@ final class GameplayService
                 $outcome['globalMmrDelta'],
             );
 
-            $settlement = $this->matchSettlementRepository->create(
+        $metrics = $this->combatMetrics($state, $playerId, $match);
+        $settlement = $this->matchSettlementRepository->create(
                 $matchId,
                 $playerId,
                 $outcome['globalMmrDelta'],
@@ -490,7 +530,7 @@ final class GameplayService
             );
 
             $this->pdo->commit();
-            return ['status' => 200, 'data' => $this->settlementToResponse($settlement, $match, $playerId)];
+            return ['status' => 200, 'data' => $this->settlementToResponse($settlement, $match, $playerId, $metrics)];
         } catch (Throwable) {
             if ($this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
@@ -499,7 +539,7 @@ final class GameplayService
         }
     }
 
-    private function settlementToResponse(MatchSettlement $settlement, \App\Entity\GameMatch $match, string $playerId): array
+    private function settlementToResponse(MatchSettlement $settlement, \App\Entity\GameMatch $match, string $playerId, array $metrics = []): array
     {
         $winnerRef = $settlement->winnerRef();
         $winner = match ($winnerRef) {
@@ -522,6 +562,12 @@ final class GameplayService
                 'xp' => $settlement->xp(),
                 'masteryXp' => $settlement->masteryXp(),
             ],
+            'result' => $winner === 'draw' ? 'draw' : ($winner === $playerId ? 'win' : 'loss'),
+            'mmrDelta' => $settlement->globalMmrDelta(),
+            'xp' => $settlement->xp(),
+            'coins' => $settlement->coins(),
+            'gems' => $settlement->gems(),
+            ...$metrics,
         ];
     }
 
@@ -573,7 +619,7 @@ final class GameplayService
         };
     }
 
-    private function startBotMatch(string $playerId, string $championId, string $queueType): array
+    private function startBotMatch(string $playerId, string $championId, string $queueType, string $mode): array
     {
         $matchId = $this->uuidV4();
         $ticketId = $this->uuidV4();
@@ -585,6 +631,13 @@ final class GameplayService
             'playerCharges' => 0,
             'enemyCharges' => 0,
             'winner' => null,
+            'recentEvents' => [],
+            'attackCount' => 0,
+            'defendCount' => 0,
+            'specialCount' => 0,
+            'damageDealt' => 0,
+            'damageTaken' => 0,
+            'mitigationTotal' => 0,
             'playerChampionId' => $championId,
             'enemyChampionId' => 'assassin',
         ];
@@ -593,6 +646,7 @@ final class GameplayService
         $this->ticketRepository->create(
             $ticketId,
             $queueType,
+            $mode,
             $playerId,
             $championId,
             'eu-west',
@@ -601,7 +655,8 @@ final class GameplayService
             $matchId
         );
 
-        return ['status' => 200, 'data' => ['ticketId' => $ticketId, 'etaSec' => 0, 'matchId' => $matchId, 'queue' => $queueType]];
+        $ticket = $this->ticketRepository->findById($ticketId);
+        return ['status' => 200, 'data' => $this->ticketPayload($ticket ?? new \App\Entity\MatchmakingTicket($ticketId, $queueType, $mode, $playerId, $championId, 'eu-west', 1000, 'matched', $matchId), 0, $matchId, 'matched')];
     }
 
     private function tryMatchRankedTicket(string $ticketId): ?string
@@ -648,6 +703,13 @@ final class GameplayService
                     'p2Hp' => 100,
                     'p1Charges' => 0,
                     'p2Charges' => 0,
+                    'recentEvents' => [],
+                    'attackCount' => 0,
+                    'defendCount' => 0,
+                    'specialCount' => 0,
+                    'damageDealt' => 0,
+                    'damageTaken' => 0,
+                    'mitigationTotal' => 0,
                     'p1Guarding' => false,
                     'p2Guarding' => false,
                     'currentPlayerId' => $ticket->playerId(),
@@ -668,6 +730,56 @@ final class GameplayService
         }
     }
 
+    /** @param array<string,mixed> $body @return array{queue:string,mode:string,vsBot:bool} */
+    private function resolveQueueSelection(array $body): array
+    {
+        $mode = strtolower((string) ($body['mode'] ?? ''));
+        if (in_array($mode, ['normal_bot', 'ranked_pvp', 'ranked_bot'], true)) {
+            return [
+                'queue' => $mode === 'normal_bot' ? 'normal' : 'ranked',
+                'mode' => $mode,
+                'vsBot' => $mode !== 'ranked_pvp',
+            ];
+        }
+
+        $queue = strtolower((string) ($body['queue'] ?? 'normal'));
+        $vsBot = (bool) ($body['vsBot'] ?? false);
+        if ($queue === 'ranked' && !$vsBot) {
+            return ['queue' => 'ranked', 'mode' => 'ranked_pvp', 'vsBot' => false];
+        }
+        if ($queue === 'ranked' && $vsBot) {
+            return ['queue' => 'ranked', 'mode' => 'ranked_bot', 'vsBot' => true];
+        }
+
+        return ['queue' => 'normal', 'mode' => 'normal_bot', 'vsBot' => true];
+    }
+
+    private function ticketPayload(\App\Entity\MatchmakingTicket $ticket, int $etaSec, ?string $matchId = null, ?string $status = null): array
+    {
+        return [
+            'ticketId' => $ticket->id(),
+            'status' => $status ?? $ticket->status(),
+            'queue' => $ticket->mode(),
+            'matchId' => $matchId ?? $ticket->matchedMatchId(),
+            'etaSec' => $etaSec,
+            'region' => $ticket->region(),
+        ];
+    }
+
+    /** @param array<string,mixed> $state @return array<string,int> */
+    private function combatMetrics(array $state, string $playerId, \App\Entity\GameMatch $match): array
+    {
+        return [
+            'damageDealt' => (int) ($state['damageDealt'] ?? 0),
+            'damageTaken' => (int) ($state['damageTaken'] ?? 0),
+            'turns' => (int) ($state['turnNo'] ?? 0),
+            'attackCount' => (int) ($state['attackCount'] ?? 0),
+            'defendCount' => (int) ($state['defendCount'] ?? 0),
+            'specialCount' => (int) ($state['specialCount'] ?? 0),
+            'mitigationTotal' => (int) ($state['mitigationTotal'] ?? 0),
+        ];
+    }
+
     private function selectBotAction(int $enemyCharges): string
     {
         if ($enemyCharges >= 2) {
@@ -683,6 +795,17 @@ final class GameplayService
         }
 
         return 'attack';
+    }
+
+    /** @param array<int,mixed> $events @param array<string,mixed> $event @return array<int,mixed> */
+    private function pushRecentEvent(array $events, array $event): array
+    {
+        $events[] = $event;
+        if (count($events) > 6) {
+            $events = array_slice($events, -6);
+        }
+
+        return array_values($events);
     }
 
     private function uuidV4(): string

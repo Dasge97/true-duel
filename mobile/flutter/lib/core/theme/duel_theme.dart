@@ -13,6 +13,10 @@ class DuelPalette extends ThemeExtension<DuelPalette> {
     required this.neonGreen,
     required this.accentOrange,
     required this.danger,
+    required this.success,
+    required this.warning,
+    required this.offline,
+    required this.epic,
   });
 
   final Color bg;
@@ -25,6 +29,10 @@ class DuelPalette extends ThemeExtension<DuelPalette> {
   final Color neonGreen;
   final Color accentOrange;
   final Color danger;
+  final Color success;
+  final Color warning;
+  final Color offline;
+  final Color epic;
 
   static const dark = DuelPalette(
     bg: Color(0xFF050B16),
@@ -37,6 +45,10 @@ class DuelPalette extends ThemeExtension<DuelPalette> {
     neonGreen: Color(0xFF7CB342),
     accentOrange: Color(0xFFFFA000),
     danger: Color(0xFFFF5252),
+    success: Color(0xFF66BB6A),
+    warning: Color(0xFFFFC107),
+    offline: Color(0xFF78909C),
+    epic: Color(0xFFBA68C8),
   );
 
   @override
@@ -51,6 +63,10 @@ class DuelPalette extends ThemeExtension<DuelPalette> {
     Color? neonGreen,
     Color? accentOrange,
     Color? danger,
+    Color? success,
+    Color? warning,
+    Color? offline,
+    Color? epic,
   }) {
     return DuelPalette(
       bg: bg ?? this.bg,
@@ -63,6 +79,10 @@ class DuelPalette extends ThemeExtension<DuelPalette> {
       neonGreen: neonGreen ?? this.neonGreen,
       accentOrange: accentOrange ?? this.accentOrange,
       danger: danger ?? this.danger,
+      success: success ?? this.success,
+      warning: warning ?? this.warning,
+      offline: offline ?? this.offline,
+      epic: epic ?? this.epic,
     );
   }
 
@@ -80,6 +100,10 @@ class DuelPalette extends ThemeExtension<DuelPalette> {
       neonGreen: Color.lerp(neonGreen, other.neonGreen, t) ?? neonGreen,
       accentOrange: Color.lerp(accentOrange, other.accentOrange, t) ?? accentOrange,
       danger: Color.lerp(danger, other.danger, t) ?? danger,
+      success: Color.lerp(success, other.success, t) ?? success,
+      warning: Color.lerp(warning, other.warning, t) ?? warning,
+      offline: Color.lerp(offline, other.offline, t) ?? offline,
+      epic: Color.lerp(epic, other.epic, t) ?? epic,
     );
   }
 }

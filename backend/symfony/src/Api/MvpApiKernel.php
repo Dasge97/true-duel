@@ -254,6 +254,14 @@ final class MvpApiKernel
             return $this->gameplayController?->ticketStatus((string) ($auth['playerId'] ?? ''), $m[1]) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
         }
 
+        if ($method === 'POST' && preg_match('#^/v1/matchmaking/tickets/([a-zA-Z0-9\-]+)/cancel$#', $path, $m) === 1) {
+            $auth = $this->requireAuth($headers);
+            if (isset($auth['status'])) {
+                return $auth;
+            }
+            return $this->gameplayController?->cancelTicket((string) ($auth['playerId'] ?? ''), $m[1]) ?? $this->error(503, 'DB_UNAVAILABLE', 'Database unavailable.');
+        }
+
         if ($method === 'POST' && preg_match('#^/v1/matches/([a-zA-Z0-9\-]+)/turns$#', $path, $m) === 1) {
             $auth = $this->requireAuth($headers);
             if (isset($auth['status'])) {

@@ -91,6 +91,7 @@ $pdo->exec(<<<'SQL'
 CREATE TABLE IF NOT EXISTS matchmaking_tickets (
     id UUID PRIMARY KEY,
     queue_type VARCHAR(16) NOT NULL,
+    mode VARCHAR(32) NOT NULL DEFAULT 'normal_bot',
     player_id UUID NOT NULL,
     champion_id VARCHAR(32) NOT NULL,
     region VARCHAR(32) NOT NULL,
@@ -99,6 +100,11 @@ CREATE TABLE IF NOT EXISTS matchmaking_tickets (
     matched_match_id UUID NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+SQL);
+
+$pdo->exec(<<<'SQL'
+ALTER TABLE matchmaking_tickets
+    ADD COLUMN IF NOT EXISTS mode VARCHAR(32) NOT NULL DEFAULT 'normal_bot';
 SQL);
 
 $pdo->exec(<<<'SQL'

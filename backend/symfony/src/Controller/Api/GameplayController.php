@@ -34,6 +34,11 @@ final class GameplayController
         return $this->gameplayService->ticketStatus($playerId, $ticketId);
     }
 
+    public function cancelTicket(string $playerId, string $ticketId): array
+    {
+        return $this->gameplayService->cancelTicket($playerId, $ticketId);
+    }
+
     public function match(string $playerId, string $matchId): array
     {
         return $this->gameplayService->match($playerId, $matchId);

@@ -61,8 +61,33 @@ class MvpApiRepository {
   }
 
   Future<EnqueueResult> enqueue(String token, String queue, String championId, {bool vsBot = false}) async {
-    final res = await _post('/v1/matchmaking/enqueue', token: token, body: {'queue': queue, 'championId': championId, 'vsBot': vsBot});
+    final mode = _normalizeMode(queue: queue, vsBot: vsBot);
+    final res = await _post('/v1/matchmaking/enqueue', token: token, body: {
+      'mode': mode,
+      'queue': _legacyQueueFromMode(mode),
+      'championId': championId,
+      'vsBot': _legacyVsBotFromMode(mode),
+    });
     return EnqueueResult.fromJson(res);
+  }
+
+  Future<TicketStatusResult> ticketStatus(String token, String ticketId) async {
+    final res = await _get('/v1/matchmaking/tickets/$ticketId', token: token);
+    return TicketStatusResult.fromJson(res);
+  }
+
+  Future<TicketStatusResult> cancelTicket(String token, String ticketId) async {
+    final res = await _post('/v1/matchmaking/tickets/$ticketId/cancel', token: token, body: const {});
+    return TicketStatusResult.fromJson(res);
+  }
+
+  Future<TicketStatusResult?> latestActiveTicket(String token) async {
+    final res = await _get('/v1/matchmaking/tickets/active', token: token);
+    final status = (res['status'] as String? ?? '').toLowerCase();
+    if (status.isEmpty || status == 'none') {
+      return null;
+    }
+    return TicketStatusResult.fromJson(res);
   }
 
   Future<Map<String, dynamic>> match(String token, String matchId) async {
@@ -225,17 +250,81 @@ class HistoryEntry {
 }
 
 class EnqueueResult {
-  EnqueueResult({required this.ticketId, required this.etaSec, this.matchId});
+  EnqueueResult({required this.ticketId, required this.etaSec, this.matchId, required this.status, required this.queue, required this.region});
   factory EnqueueResult.fromJson(Map<String, dynamic> json) => EnqueueResult(
     ticketId: json['ticketId'] as String? ?? '',
     etaSec: json['etaSec'] as int? ?? 0,
     matchId: json['matchId'] as String?,
+    status: json['status'] as String? ?? 'queued',
+    queue: json['queue'] as String? ?? 'normal_bot',
+    region: json['region'] as String? ?? 'eu-west',
   );
 
   final String ticketId;
   final int etaSec;
   final String? matchId;
+  final String status;
+  final String queue;
+  final String region;
 }
+
+class TicketStatusResult {
+  const TicketStatusResult({
+    required this.ticketId,
+    required this.status,
+    required this.queue,
+    required this.matchId,
+    required this.etaSec,
+    required this.region,
+  });
+
+  factory TicketStatusResult.fromJson(Map<String, dynamic> json) => TicketStatusResult(
+    ticketId: json['ticketId'] as String? ?? '',
+    status: json['status'] as String? ?? 'queued',
+    queue: json['queue'] as String? ?? 'normal_bot',
+    matchId: json['matchId'] as String?,
+    etaSec: json['etaSec'] as int? ?? 0,
+    region: json['region'] as String? ?? 'eu-west',
+  );
+
+  final String ticketId;
+  final String status;
+  final String queue;
+  final String? matchId;
+  final int etaSec;
+  final String region;
+}
+
+String _normalizeMode({required String queue, required bool vsBot}) {
+  final normalized = queue.trim().toLowerCase();
+  switch (normalized) {
+    case 'ranked_pvp':
+    case 'ranked_bot':
+    case 'normal_bot':
+      return normalized;
+    case 'ranked':
+      return vsBot ? 'ranked_bot' : 'ranked_pvp';
+    case 'bot':
+    case 'normal':
+      return 'normal_bot';
+    default:
+      return normalized;
+  }
+}
+
+String _legacyQueueFromMode(String mode) {
+  switch (mode) {
+    case 'ranked_pvp':
+    case 'ranked_bot':
+      return 'ranked';
+    case 'normal_bot':
+      return 'normal';
+    default:
+      return mode;
+  }
+}
+
+bool _legacyVsBotFromMode(String mode) => mode == 'normal_bot' || mode == 'ranked_bot';
 
 class ChampionCatalogEntry {
   const ChampionCatalogEntry({

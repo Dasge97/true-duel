@@ -5,7 +5,6 @@ import 'config/game_mode_config.dart';
 import 'core/theme/duel_theme.dart';
 import 'features/home/presentation/product_home_shell.dart';
 import 'features/mvp/data/mvp_api_repository.dart';
-import 'features/play/presentation/visual_play_flow.dart';
 
 void main() {
   runApp(const JuegoMvpApp());
@@ -117,20 +116,11 @@ class _LoginScreenState extends State<LoginScreen> {
             playerId: user.playerId,
             token: user.token,
             apiBaseUrl: GameModeConfig.current.apiBaseUrl,
-            onPlayTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => VisualChampionSelectScreen(
-                    token: user.token,
-                    api: _api,
-                  ),
-                ),
-              );
-            },
           ),
         ),
       );
     } on MvpApiException catch (e) {
+      if (!mounted) return;
       setState(() => error = 'API ${e.statusCode}: ${e.code} - ${e.message}');
     } finally {
       if (mounted) {

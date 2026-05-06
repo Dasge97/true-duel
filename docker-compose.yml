@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: true_duel
       POSTGRES_PASSWORD: true_duel
     ports:
-      - "5432:5432"
+      - "15432:5432"
     volumes:
       - true_duel_db_data:/var/lib/postgresql/data
     healthcheck:
