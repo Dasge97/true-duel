@@ -10,8 +10,8 @@ class RankedController extends ChangeNotifier {
 
   bool isLoading = true;
   String? errorCode;
-  TicketStatusResult? activeTicket;
   ProfileResult? profile;
+  List<RankingEntry> ranking = const [];
 
   Future<void> load() async {
     isLoading = true;
@@ -19,15 +19,15 @@ class RankedController extends ChangeNotifier {
     notifyListeners();
     try {
       profile = await api.profile(token);
-      activeTicket = await api.latestActiveTicket(token);
+      ranking = await api.ranking(token);
     } on MvpApiException catch (e) {
       errorCode = e.code;
       profile = null;
-      activeTicket = null;
+      ranking = const [];
     } catch (_) {
       errorCode = 'UNKNOWN';
       profile = null;
-      activeTicket = null;
+      ranking = const [];
     } finally {
       isLoading = false;
       notifyListeners();

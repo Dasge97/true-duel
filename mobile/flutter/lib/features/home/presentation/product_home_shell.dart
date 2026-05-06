@@ -60,21 +60,41 @@ class _ProductHomeShellState extends State<ProductHomeShell> {
     _queueController = QueueController(api: _api, token: widget.token);
   }
 
+  Future<void> _refreshHomeData() async {
+    await Future.wait([
+      _homeController.load(),
+      _profileController.load(),
+      _rankedController.load(),
+    ]);
+  }
+
   void _openPlay() {
-    Navigator.of(context).push(
+    _openPlayFlow();
+  }
+
+  Future<void> _openPlayFlow() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => MatchmakingScreen(
           controller: _queueController,
           championId: 'assassin',
           championName: 'Assassin',
+          playerRank: widget.rank,
+          playerMmr: widget.mmr,
           onOpenMatch: _openCombat,
         ),
       ),
     );
+    if (!mounted) return;
+    await _refreshHomeData();
   }
 
   void _openCombat(String matchId) {
-    Navigator.of(context).push(
+    _openCombatFlow(matchId);
+  }
+
+  Future<void> _openCombatFlow(String matchId) async {
+    await Navigator.of(context).push(
       VisualPlayFlow.combatRoute(
         token: widget.token,
         api: _api,
@@ -84,14 +104,16 @@ class _ProductHomeShellState extends State<ProductHomeShell> {
         onPlayAgain: () => Navigator.of(context).popUntil((route) => route.isFirst),
       ),
     );
+    if (!mounted) return;
+    await _refreshHomeData();
   }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomeScreen(controller: _homeController, onPlay: _openPlay),
+      RankedScreen(controller: _rankedController),
       ChampionsScreen(controller: _championsController),
-      RankedScreen(controller: _rankedController, onOpenMatchmaking: _openPlay, onOpenMatch: _openCombat),
+      HomeScreen(controller: _homeController, onPlay: _openPlay),
       ShopScreen(controller: _shopController),
       ProfileScreen(controller: _profileController),
     ];
@@ -102,9 +124,9 @@ class _ProductHomeShellState extends State<ProductHomeShell> {
         selectedIndex: _tab,
         onDestinationSelected: (value) => setState(() => _tab = value),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.emoji_events_outlined), label: 'Ranking'),
           NavigationDestination(icon: Icon(Icons.shield_outlined), label: 'Campeones'),
-          NavigationDestination(icon: Icon(Icons.emoji_events_outlined), label: 'Ranked'),
+          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
           NavigationDestination(icon: Icon(Icons.storefront_outlined), label: 'Tienda'),
           NavigationDestination(icon: Icon(Icons.person_outline), label: 'Perfil'),
         ],

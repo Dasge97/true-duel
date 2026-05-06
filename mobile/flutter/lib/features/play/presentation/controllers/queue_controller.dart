@@ -87,6 +87,30 @@ class QueueController extends ChangeNotifier {
     }
   }
 
+  Future<String?> resolvePlayableMatchId() async {
+    final id = activeTicket?.matchId;
+    if (id == null || id.isEmpty) return null;
+
+    try {
+      final match = await api.match(token, id);
+      final status = (match['status'] as String? ?? '').toLowerCase();
+      if (status == 'completed') {
+        activeTicket = null;
+        _statusOverride = 'Sin cola activa';
+        errorCode = 'MATCH_FINISHED';
+        notifyListeners();
+        return null;
+      }
+      return id;
+    } on MvpApiException catch (e) {
+      activeTicket = null;
+      _statusOverride = 'Sin cola activa';
+      errorCode = e.code;
+      notifyListeners();
+      return null;
+    }
+  }
+
   Future<void> pollOnce() async {
     final ticketId = activeTicket?.ticketId;
     if (ticketId == null || ticketId.isEmpty) return;
