@@ -94,8 +94,16 @@ class MvpApiRepository {
     return _get('/v1/matches/$matchId', token: token);
   }
 
-  Future<Map<String, dynamic>> resolveTurn(String token, String matchId, String action, int clientStateVersion) async {
-    return _post('/v1/matches/$matchId/turns', token: token, body: {'action': action, 'clientStateVersion': clientStateVersion});
+  Future<Map<String, dynamic>> resolveTurn(
+    String token,
+    String matchId,
+    List<Map<String, dynamic>> actions,
+    int clientStateVersion,
+  ) async {
+    return _post('/v1/matches/$matchId/turns', token: token, body: {
+      'actions': actions,
+      'clientStateVersion': clientStateVersion,
+    });
   }
 
   Future<Map<String, dynamic>> completeMatch(String token, String matchId) async {
