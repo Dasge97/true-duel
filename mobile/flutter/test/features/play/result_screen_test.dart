@@ -4,9 +4,9 @@ import 'package:juego_mobile/features/play/presentation/controllers/result_contr
 import 'package:juego_mobile/features/play/presentation/screens/result_screen.dart';
 
 void main() {
-  testWidgets('renders epic structure and reward/performance metrics', (tester) async {
+  testWidgets('renders victory title and reward/performance sections', (tester) async {
     final controller = ResultController.fromSettlement({
-      'result': 'victory',
+      'result': 'win',
       'mmrDelta': 18,
       'xp': 130,
       'coins': 105,
@@ -29,15 +29,20 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
 
-    expect(find.text('Resultado épico'), findsOneWidget);
+    expect(find.text('¡Victoria legendaria!'), findsOneWidget);
     expect(find.text('Recompensas'), findsOneWidget);
     expect(find.text('Rendimiento'), findsOneWidget);
     expect(find.text('+4'), findsOneWidget);
     expect(find.text('Mitigación'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Continuar'), 300.0);
+    expect(find.text('Continuar'), findsOneWidget);
+    expect(find.text('Jugar de nuevo'), findsOneWidget);
   });
 
-  testWidgets('falls back gracefully when optional gems are absent', (tester) async {
+  testWidgets('renders defeat title and shows gem fallback when absent', (tester) async {
     final controller = ResultController.fromSettlement({
       'result': 'loss',
       'mmrDelta': -9,
@@ -61,8 +66,12 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
 
+    expect(find.text('Derrota honorable'), findsOneWidget);
     expect(find.text('No disponible'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('Continuar'), 300.0);
     expect(find.text('Continuar'), findsOneWidget);
     expect(find.text('Jugar de nuevo'), findsOneWidget);
   });

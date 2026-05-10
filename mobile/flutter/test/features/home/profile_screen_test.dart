@@ -18,6 +18,7 @@ class _ProfileApiFake extends MvpApiRepository {
       name: 'Ada',
       rank: 'Gold',
       mmr: 1400,
+      sp: 1250,
       level: 8,
       experienceTotal: 340,
       experienceToNextLevel: 80,
@@ -31,30 +32,30 @@ class _ProfileApiFake extends MvpApiRepository {
 }
 
 void main() {
-  testWidgets('profile screen shows verification payload fields for perfil', (tester) async {
+  testWidgets('profile screen shows mega header with title and combat stats', (tester) async {
     final controller = ProfileController(api: _ProfileApiFake(), token: 'token');
 
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: ProfileScreen(controller: controller))));
     await tester.pumpAndSettle();
 
-    expect(find.text('Ada'), findsOneWidget);
-    expect(find.text('Rango'), findsOneWidget);
-    expect(find.text('Gold'), findsOneWidget);
-    expect(find.text('MMR'), findsOneWidget);
-    expect(find.text('1400'), findsOneWidget);
-    expect(find.text('Nivel'), findsOneWidget);
-    expect(find.text('8'), findsOneWidget);
-    expect(find.text('XP total'), findsOneWidget);
-    expect(find.text('340'), findsOneWidget);
-    expect(find.text('XP sig. nivel'), findsOneWidget);
-    expect(find.text('80'), findsOneWidget);
-    expect(find.text('Monedas'), findsOneWidget);
-    expect(find.text('500'), findsOneWidget);
-    expect(find.text('Gemas'), findsOneWidget);
-    expect(find.text('7'), findsOneWidget);
-    expect(find.text('Wins'), findsOneWidget);
+    // Header: nombre en mayúsculas, título, SP, posición
+    expect(find.text('ADA'), findsOneWidget);
+    expect(find.text('1250'), findsOneWidget);
+
+    // Estadísticas
+    expect(find.text('25'), findsOneWidget);
+    expect(find.text('PARTIDAS'), findsOneWidget);
     expect(find.text('14'), findsOneWidget);
-    expect(find.text('Losses'), findsOneWidget);
+    expect(find.text('VICTORIAS'), findsOneWidget);
     expect(find.text('11'), findsOneWidget);
+    expect(find.text('DERROTAS'), findsOneWidget);
+    expect(find.text('WIN'), findsOneWidget);
+
+    // XP
+    expect(find.text('PROGRESO · NIVEL 8'), findsOneWidget);
+
+    // Secciones inferiores
+    expect(find.text('MEDALLAS'), findsOneWidget);
+    expect(find.text('PERSONAJES MÁS USADOS'), findsOneWidget);
   });
 }

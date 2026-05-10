@@ -56,7 +56,6 @@ final class CombatRulesEngine
                 continue;
             }
             if ($cola === 'ranked' && (($bonificador['categoriaVolatilidad'] ?? '') === 'alta')) {
-                $elegibles[] = $bonificador;
                 continue;
             }
             $elegibles[] = $bonificador;

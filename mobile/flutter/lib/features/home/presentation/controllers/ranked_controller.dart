@@ -11,23 +11,32 @@ class RankedController extends ChangeNotifier {
   bool isLoading = true;
   String? errorCode;
   ProfileResult? profile;
-  List<RankingEntry> ranking = const [];
+  List<RankingEntry> rankingMmr = const [];
+  List<RankingEntry> rankingSp = const [];
 
   Future<void> load() async {
     isLoading = true;
     errorCode = null;
     notifyListeners();
     try {
-      profile = await api.profile(token);
-      ranking = await api.ranking(token);
+      final results = await Future.wait([
+        api.profile(token),
+        api.ranking(token),
+        api.rankingSp(token),
+      ]);
+      profile = results[0] as ProfileResult;
+      rankingMmr = results[1] as List<RankingEntry>;
+      rankingSp = results[2] as List<RankingEntry>;
     } on MvpApiException catch (e) {
       errorCode = e.code;
       profile = null;
-      ranking = const [];
+      rankingMmr = const [];
+      rankingSp = const [];
     } catch (_) {
       errorCode = 'UNKNOWN';
       profile = null;
-      ranking = const [];
+      rankingMmr = const [];
+      rankingSp = const [];
     } finally {
       isLoading = false;
       notifyListeners();

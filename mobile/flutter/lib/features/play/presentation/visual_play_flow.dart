@@ -11,7 +11,6 @@ class VisualPlayFlow {
     required String token,
     required MvpApiRepository api,
     required String matchId,
-    required String championName,
     required VoidCallback onContinue,
     required VoidCallback onPlayAgain,
   }) {
@@ -21,7 +20,6 @@ class VisualPlayFlow {
           api: api,
           token: token,
           matchId: matchId,
-          championName: championName,
         ),
         onContinue: onContinue,
         onPlayAgain: onPlayAgain,

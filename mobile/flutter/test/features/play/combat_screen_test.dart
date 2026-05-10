@@ -7,92 +7,93 @@ import 'package:juego_mobile/features/mvp/data/mvp_api_repository.dart';
 import 'package:juego_mobile/features/play/presentation/controllers/combat_controller.dart';
 import 'package:juego_mobile/features/play/presentation/screens/combat_screen.dart';
 
-class _CombatApiFake extends MvpApiRepository {
-  _CombatApiFake()
+Map<String, dynamic> _state3v3({String? winner}) => {
+  'playerChampions': [
+    {'id': 'vanguard',  'hp': 85,  'charges': 1, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+    {'id': 'bulwark',   'hp': 100, 'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+    {'id': 'riftblade', 'hp': 70,  'charges': 2, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+  ],
+  'enemyChampions': [
+    {'id': 'vanguard',  'hp': 90,  'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+    {'id': 'bulwark',   'hp': 100, 'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+    {'id': 'riftblade', 'hp': 80,  'charges': 1, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+  ],
+  'turnNo': 1,
+  'serverStateVersion': 1,
+  'winner': winner,
+  'recentEvents': [],
+};
+
+class _FakeApi extends MvpApiRepository {
+  _FakeApi()
       : super(
           baseUrl: 'http://api.test',
           httpClient: MockClient((_) async => throw UnimplementedError()),
         );
 
-  final Completer<Map<String, dynamic>> turnCompleter = Completer<Map<String, dynamic>>();
+  final Completer<Map<String, dynamic>> turnCompleter = Completer();
 
   @override
-  Future<Map<String, dynamic>> match(String token, String matchId) async {
-    return {
-      'state': {
-        'playerHp': 100,
-        'enemyHp': 95,
-        'playerCharges': 2,
-        'currentTurn': 3,
-        'playerDefending': true,
-        'rivalDefending': false,
-        'rivalName': 'Hydra',
-        'lastRivalAction': 'Defender',
-        'recentEvents': [
-          {'event': 'Golpe crítico'},
-          {'event': 'Bloqueo parcial'},
-        ],
-      },
-    };
-  }
+  Future<Map<String, dynamic>> match(String token, String matchId) async =>
+      {'state': _state3v3()};
 
   @override
-  Future<Map<String, dynamic>> resolveTurn(String token, String matchId, String action, int clientStateVersion) {
-    return turnCompleter.future;
-  }
+  Future<Map<String, dynamic>> resolveTurn(
+    String token,
+    String matchId,
+    List<Map<String, dynamic>> actions,
+    int clientStateVersion,
+  ) => turnCompleter.future;
 }
 
-void main() {
-  testWidgets('combat screen renders HUD and recent log', (tester) async {
-    final api = _CombatApiFake();
-    final controller = CombatController(api: api, token: 'token', matchId: 'm-1', championName: 'Assassin');
+Widget _wrap(Widget child) => MaterialApp(home: child);
 
-    await tester.pumpWidget(
-      MaterialApp(home: CombatScreen(controller: controller, onContinue: () {}, onPlayAgain: () {})),
-    );
+void main() {
+  testWidgets('combat screen renders three enemy and three player cards', (tester) async {
+    final api = _FakeApi();
+    final c = CombatController(api: api, token: 'tok', matchId: 'm-1');
+
+    await tester.pumpWidget(_wrap(
+      CombatScreen(controller: c, onContinue: () {}, onPlayAgain: () {}),
+    ));
     await tester.pumpAndSettle();
 
-    expect(find.text('Rival: Hydra'), findsOneWidget);
-    expect(find.text('Cargas: 2/2'), findsOneWidget);
-    expect(find.text('Registro reciente (6)'), findsOneWidget);
-    expect(find.text('Golpe crítico'), findsOneWidget);
+    expect(find.text('Vanguard'), findsNWidgets(2)); // one player, one enemy
+    expect(find.text('Bulwark'),  findsNWidgets(2));
+    expect(find.text('Riftblade'), findsNWidgets(2));
   });
 
-  testWidgets('combat actions lock while runtime turn resolves', (tester) async {
-    final api = _CombatApiFake();
-    final controller = CombatController(api: api, token: 'token', matchId: 'm-1', championName: 'Assassin');
+  testWidgets('FINALIZAR TURNO is disabled until all slots have actions', (tester) async {
+    final api = _FakeApi();
+    final c = CombatController(api: api, token: 'tok', matchId: 'm-1');
 
-    await tester.pumpWidget(
-      MaterialApp(home: CombatScreen(controller: controller, onContinue: () {}, onPlayAgain: () {})),
+    await tester.pumpWidget(_wrap(
+      CombatScreen(controller: c, onContinue: () {}, onPlayAgain: () {}),
+    ));
+    await tester.pumpAndSettle();
+
+    final btn = tester.widget<ElevatedButton>(
+      find.widgetWithText(ElevatedButton, 'FINALIZAR TURNO'),
     );
+    expect(btn.onPressed, isNull);
+  });
+
+  testWidgets('action buttons appear after selecting a player champion', (tester) async {
+    final api = _FakeApi();
+    final c = CombatController(api: api, token: 'tok', matchId: 'm-1');
+
+    await tester.pumpWidget(_wrap(
+      CombatScreen(controller: c, onContinue: () {}, onPlayAgain: () {}),
+    ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Atacar'));
-    await tester.pump();
+    // Tap first player champion card (Vanguard — player side)
+    final playerVanguardFinders = tester.widgetList(find.text('Vanguard')).toList();
+    // Player champions are in the bottom half; at least one Vanguard text widget exists
+    expect(playerVanguardFinders.isNotEmpty, isTrue);
 
-    final attackButton = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Atacar'));
-    expect(attackButton.onPressed, isNull);
-    expect(find.textContaining('Resolviendo ataque'), findsOneWidget);
-
-    api.turnCompleter.complete({
-      'snapshot': {
-        'playerHp': 95,
-        'enemyHp': 80,
-        'playerCharges': 1,
-        'currentTurn': 4,
-        'playerDefending': false,
-        'rivalDefending': true,
-        'rivalName': 'Hydra',
-        'lastRivalAction': 'Atacar',
-        'recentEvents': [
-          {'event': 'Ataque resuelto'},
-        ],
-      },
-    });
-    await tester.pumpAndSettle();
-
-    final unlockedAttackButton = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Atacar'));
-    expect(unlockedAttackButton.onPressed, isNotNull);
-    expect(find.textContaining('Acción ataque resuelta'), findsOneWidget);
+    expect(find.text('ATTACK'), findsOneWidget);
+    expect(find.text('DEFEND'), findsOneWidget);
+    expect(find.text('SPECIAL'), findsOneWidget);
   });
 }

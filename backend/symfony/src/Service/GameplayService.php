@@ -23,6 +23,11 @@ final class GameplayService
         return $this->matchmakingService->enqueue($playerId, $body);
     }
 
+    public function activeTicket(string $playerId): array
+    {
+        return $this->matchmakingService->activeTicket($playerId);
+    }
+
     public function ticketStatus(string $playerId, string $ticketId): array
     {
         return $this->matchmakingService->ticketStatus($playerId, $ticketId);
@@ -73,5 +78,10 @@ final class GameplayService
     public function abandonMatch(string $playerId, string $matchId): array
     {
         return $this->matchAbandonService->abandonMatch($playerId, $matchId);
+    }
+
+    private function matchBelongsToPlayer(string $p1Id, ?string $p2Id, string $playerId): bool
+    {
+        return $p1Id === $playerId || ($p2Id !== null && $p2Id === $playerId);
     }
 }

@@ -24,7 +24,6 @@ class HomeController extends ChangeNotifier {
     profileError = null;
     missionsError = null;
     historyError = null;
-    notifyListeners();
 
     try {
       profile = await api.profile(token);

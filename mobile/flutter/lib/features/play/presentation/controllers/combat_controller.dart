@@ -49,13 +49,11 @@ class CombatController extends ChangeNotifier {
     required this.api,
     required this.token,
     required this.matchId,
-    required this.championName,
   });
 
   final MvpApiRepository api;
   final String token;
   final String matchId;
-  final String championName;
 
   List<CombatChampion> playerChampions = const [];
   List<CombatChampion> enemyChampions = const [];
@@ -116,6 +114,16 @@ class CombatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void assignActionWithTarget(String action, int enemySlot) {
+    if (activeSlot == null || inputLocked) return;
+    if (enemySlot >= enemyChampions.length) return;
+    if (!enemyChampions[enemySlot].isAlive) return;
+    final slot = activeSlot!;
+    pendingActions[slot] = SlotAction(action: action, targetSlot: enemySlot);
+    _advanceToNextUnassignedSlot(from: slot);
+    notifyListeners();
+  }
+
   void clearSlotAction(int slot) {
     pendingActions.remove(slot);
     activeSlot = slot;
@@ -167,8 +175,13 @@ class CombatController extends ChangeNotifier {
       }
       return null;
     } on MvpApiException catch (e) {
-      errorCode = e.code;
-      lastFeedback = '';
+      if (e.code == 'STATE_VERSION_CONFLICT') {
+        lastFeedback = '';
+        await load();
+      } else {
+        errorCode = e.code;
+        lastFeedback = '';
+      }
       return null;
     } finally {
       inputLocked = false;
@@ -194,10 +207,7 @@ class CombatController extends ChangeNotifier {
             .whereType<Map<String, dynamic>>()
             .toList(growable: false);
 
-    // Auto-seleccionar primer slot vivo si ninguno está seleccionado
-    if (activeSlot == null || (activeSlot! < playerChampions.length && !playerChampions[activeSlot!].isAlive)) {
-      activeSlot = _firstLivingPlayerSlot();
-    }
+    activeSlot = _firstLivingPlayerSlot();
   }
 
   int? _firstLivingEnemySlot() {

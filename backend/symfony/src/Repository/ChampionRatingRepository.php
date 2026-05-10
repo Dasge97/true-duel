@@ -59,12 +59,6 @@ final class ChampionRatingRepository
 
     private function findByPlayerAndChampion(string $playerId, string $championId): ?ChampionRating
     {
-        $statement = $this->pdo->prepare(
-            'SELECT player_id, champion_id, mmr, matches, wins
-             FROM player_champion_ratings
-             WHERE player_id = :player_id AND champion_id = :champion_id
-             LIMIT 1'
-        );
         $row = $this->connection->fetchAssociative(
             'SELECT player_id, champion_id, mmr, matches, wins
              FROM player_champion_ratings

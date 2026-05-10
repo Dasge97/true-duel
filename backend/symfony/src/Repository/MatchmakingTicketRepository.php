@@ -26,12 +26,11 @@ final class MatchmakingTicketRepository
         ?string $matchedMatchId,
     ): MatchmakingTicket {
         $this->connection->executeStatement(
-            'INSERT INTO matchmaking_tickets (id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id, created_at)
-             VALUES (:id, :queue_type, :mode, :player_id, :champion_id, :region, :mmr, :status, :matched_match_id, NOW())',
+            'INSERT INTO matchmaking_tickets (id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id, created_at)
+             VALUES (:id, :queue_type, :player_id, :champion_id, :region, :mmr, :status, :matched_match_id, NOW())',
             [
                 'id' => $id,
                 'queue_type' => $queueType,
-                'mode' => $mode,
                 'player_id' => $playerId,
                 'champion_id' => $championId,
                 'region' => $region,
@@ -47,7 +46,7 @@ final class MatchmakingTicketRepository
     public function findById(string $id): ?MatchmakingTicket
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id, created_at
+            'SELECT id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id, created_at
              FROM matchmaking_tickets
              WHERE id = :id
              LIMIT 1',
@@ -63,7 +62,7 @@ final class MatchmakingTicketRepository
     public function findQueuedByPlayerAndQueue(string $playerId, string $queueType): ?MatchmakingTicket
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id, created_at
+            'SELECT id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id, created_at
              FROM matchmaking_tickets
              WHERE player_id = :player_id
                AND queue_type = :queue_type
@@ -86,7 +85,7 @@ final class MatchmakingTicketRepository
     public function findActiveByPlayer(string $playerId): ?MatchmakingTicket
     {
         $row = $this->connection->fetchAssociative(
-            "SELECT id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id, created_at
+            "SELECT id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id, created_at
              FROM matchmaking_tickets
              WHERE player_id = :player_id
                AND (
@@ -125,7 +124,7 @@ final class MatchmakingTicketRepository
     ): ?MatchmakingTicket
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id, created_at
+            'SELECT id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id, created_at
              FROM matchmaking_tickets
              WHERE id <> :exclude_id
                AND player_id <> :exclude_player_id
@@ -240,7 +239,7 @@ final class MatchmakingTicketRepository
     public function findByIdForUpdate(string $id): ?MatchmakingTicket
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT id, queue_type, mode, player_id, champion_id, region, mmr, status, matched_match_id, created_at
+            'SELECT id, queue_type, player_id, champion_id, region, mmr, status, matched_match_id, created_at
              FROM matchmaking_tickets
              WHERE id = :id
              LIMIT 1
@@ -265,7 +264,7 @@ final class MatchmakingTicketRepository
         return new MatchmakingTicket(
             (string) $row['id'],
             (string) $row['queue_type'],
-            (string) ($row['mode'] ?? $this->defaultMode((string) $row['queue_type'])),
+            $this->defaultMode((string) $row['queue_type']),
             (string) $row['player_id'],
             (string) $row['champion_id'],
             (string) ($row['region'] ?? 'eu-west'),

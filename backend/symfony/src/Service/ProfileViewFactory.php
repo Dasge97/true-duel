@@ -20,8 +20,6 @@ final class ProfileViewFactory
             'rank' => $profile->rankLabel(),
             'mmrGlobal' => $profile->mmrGlobal(),
             'puntosHabilidad' => $profile->puntosHabilidad(),
-            'tituloCompetitivo' => $profile->tituloCompetitivo(),
-            'posicionCompetitiva' => $profile->posicionCompetitiva(),
             'level' => $profile->level(),
             'experienceTotal' => $profile->experienceTotal(),
             'experienceToNextLevel' => RankProgression::experienceToNextLevel($profile->experienceTotal()),
@@ -45,7 +43,6 @@ final class ProfileViewFactory
             'playerId' => $profile->playerId(),
             'name' => $profile->displayName(),
             'rank' => $profile->rankLabel(),
-            'tituloCompetitivo' => $profile->tituloCompetitivo(),
             'coins' => $profile->coins(),
             'gems' => $profile->gems(),
             'level' => $profile->level(),
@@ -62,8 +59,6 @@ final class ProfileViewFactory
             'name' => $profile->displayName(),
             'mmr' => $profile->mmrGlobal(),
             'sp' => $profile->puntosHabilidad(),
-            'titulo' => $profile->tituloCompetitivo(),
-            'posicion' => $profile->posicionCompetitiva(),
             'level' => $profile->level(),
         ];
     }
@@ -77,8 +72,6 @@ final class ProfileViewFactory
             'rank' => $profile->rankLabel(),
             'mmr' => $profile->mmrGlobal(),
             'sp' => $profile->puntosHabilidad(),
-            'titulo' => $profile->tituloCompetitivo(),
-            'posicion' => $profile->posicionCompetitiva(),
             'level' => $profile->level(),
             'region' => $profile->region(),
         ];

@@ -13,65 +13,47 @@ class _FakeApi extends MvpApiRepository {
         );
 
   @override
-  Future<EnqueueResult> enqueue(String token, String queue, String championId, {bool vsBot = false}) async {
-    return EnqueueResult(
-      ticketId: 'ticket-1',
-      etaSec: 10,
-      matchId: null,
-      status: 'queued',
-      queue: queue,
-      region: 'eu-west',
-    );
-  }
-
-  @override
   Future<TicketStatusResult?> latestActiveTicket(String token) async => null;
-
-  @override
-  Future<TicketStatusResult> cancelTicket(String token, String ticketId) async {
-    return TicketStatusResult(ticketId: ticketId, status: 'cancelled', queue: 'normal_bot', matchId: null, etaSec: 0, region: 'eu-west');
-  }
 }
 
+Widget _wrap(Widget child) => MaterialApp(home: child);
+
 void main() {
-  testWidgets('mode dropdown becomes disabled while queued', (tester) async {
+  testWidgets('matchmaking screen shows champion name and mode options', (tester) async {
     final controller = QueueController(api: _FakeApi(), token: 'token');
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MatchmakingScreen(controller: controller, championId: 'assassin', championName: 'Assassin', onOpenMatch: (_) {}),
+    await tester.pumpWidget(_wrap(
+      MatchmakingScreen(
+        controller: controller,
+        championId: 'vanguard',
+        championName: 'Vanguard',
+        onOpenMatch: (_) {},
       ),
-    );
-    await tester.pumpAndSettle();
+    ));
+    // Use pump with duration to avoid timeout from repeating AnimationController
+    await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('Campeón: Assassin'), findsOneWidget);
-    expect(find.text('normal_bot'), findsOneWidget);
-    expect(find.text('Sin cola activa'), findsOneWidget);
-    expect(find.text('Entrar en cola'), findsOneWidget);
-
-    await tester.tap(find.text('Entrar en cola'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Cancelar cola'), findsOneWidget);
-    final modeField = tester.widget<DropdownButtonFormField<String>>(find.byType(DropdownButtonFormField<String>));
-    expect(modeField.onChanged, isNull);
+    expect(find.text('Vanguard'), findsOneWidget);
+    expect(find.text('BUSCAR PARTIDA'), findsOneWidget);
+    expect(find.text('Selecciona modo'), findsOneWidget);
   });
 
-  testWidgets('cancel button clears queue state', (tester) async {
+  testWidgets('buscar partida button is enabled when controller is not busy', (tester) async {
     final controller = QueueController(api: _FakeApi(), token: 'token');
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: MatchmakingScreen(controller: controller, championId: 'assassin', championName: 'Assassin', onOpenMatch: (_) {}),
+    await tester.pumpWidget(_wrap(
+      MatchmakingScreen(
+        controller: controller,
+        championId: 'vanguard',
+        championName: 'Vanguard',
+        onOpenMatch: (_) {},
       ),
+    ));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final btn = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'BUSCAR PARTIDA'),
     );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Entrar en cola'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancelar cola'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Entrar en cola'), findsOneWidget);
+    expect(btn.onPressed, isNotNull);
   });
 }

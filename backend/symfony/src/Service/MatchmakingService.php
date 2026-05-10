@@ -100,6 +100,18 @@ final class MatchmakingService
         return $this->startBotMatch($playerId, $personajePrincipal, $equipoActivo['equipo'], $queueType, $mode);
     }
 
+    public function activeTicket(string $playerId): array
+    {
+        $this->normalizarEstadoMatchmaking();
+
+        $ticket = $this->ticketRepository->findActiveByPlayer($playerId);
+        if ($ticket === null) {
+            return ['status' => 200, 'data' => ['status' => 'none']];
+        }
+
+        return ['status' => 200, 'data' => $this->ticketPayload($ticket)];
+    }
+
     public function ticketStatus(string $playerId, string $ticketId): array
     {
         $this->normalizarEstadoMatchmaking();
@@ -165,17 +177,12 @@ final class MatchmakingService
     /** @param list<string> $equipoJugador */
     private function startBotMatch(string $playerId, string $personajePrincipal, array $equipoJugador, string $queueType, string $mode): array
     {
-        $this->normalizarEstadoMatchmaking();
         $matchId = $this->uuidGenerator->v4();
         $ticketId = $this->uuidGenerator->v4();
         $equipoRival = $this->equipoBotBase();
         $state = [
             'serverStateVersion' => 1,
             'turnNo' => 0,
-            'playerHp' => 100,
-            'enemyHp' => 100,
-            'playerCharges' => 0,
-            'enemyCharges' => 0,
             'winner' => null,
             'recentEvents' => [],
             'attackCount' => 0,
@@ -183,9 +190,6 @@ final class MatchmakingService
             'specialCount' => 0,
             'damageDealt' => 0,
             'damageTaken' => 0,
-            'mitigationTotal' => 0,
-            'playerChampionId' => $personajePrincipal,
-            'enemyChampionId' => $equipoRival[0] ?? 'vanguard',
             ...$this->combatStateFactory->estadoInicialBot($equipoJugador, $equipoRival, $queueType),
         ];
         $this->matchRepository->createBotMatch($matchId, $queueType, $playerId, self::BOT_NAME, $state);
@@ -210,7 +214,6 @@ final class MatchmakingService
 
     private function tryMatchRankedTicket(string $ticketId): ?string
     {
-        $this->normalizarEstadoMatchmaking();
         $ticket = $this->ticketRepository->findById($ticketId);
         if ($ticket === null || $ticket->status() !== 'queued') {
             return $ticket?->matchedMatchId();
@@ -254,22 +257,14 @@ final class MatchmakingService
                     'serverStateVersion' => 1,
                     'turnNo' => 0,
                     'winner' => null,
-                    'p1Hp' => 100,
-                    'p2Hp' => 100,
-                    'p1Charges' => 0,
-                    'p2Charges' => 0,
                     'recentEvents' => [],
                     'attackCount' => 0,
                     'defendCount' => 0,
                     'specialCount' => 0,
                     'damageDealt' => 0,
                     'damageTaken' => 0,
-                    'mitigationTotal' => 0,
-                    'p1Guarding' => false,
-                    'p2Guarding' => false,
                     'currentPlayerId' => $ticket->playerId(),
-                    'p1ChampionId' => $personajePrincipalP1,
-                    'p2ChampionId' => $personajePrincipalP2,
+                    'pvpTurnDeadlineAt' => time() + 90,
                     ...$this->combatStateFactory->estadoInicialPvp($equipoP1, $equipoP2, 'ranked'),
                 ]
             );

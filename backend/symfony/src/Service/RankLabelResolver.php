@@ -9,12 +9,12 @@ final class RankLabelResolver
     public static function fromMmr(int $mmr): string
     {
         return match (true) {
-            $mmr >= 2000 => 'Diamante I',
-            $mmr >= 1800 => 'Platino I',
-            $mmr >= 1600 => 'Oro I',
-            $mmr >= 1400 => 'Oro II',
-            $mmr >= 1200 => 'Plata I',
-            default => 'Bronce I',
+            $mmr >= 2000 => 'Diamante',
+            $mmr >= 1800 => 'Platino',
+            $mmr >= 1600 => 'Oro',
+            $mmr >= 1400 => 'Plata',
+            $mmr >= 1200 => 'Bronce',
+            default => 'Hierro',
         };
     }
 }

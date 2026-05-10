@@ -26,4 +26,9 @@ final class AuthHttpController
     {
         return $this->api->respond($this->authService->login($this->api->decodeBody($request)));
     }
+
+    public function refresh(Request $request): JsonResponse
+    {
+        return $this->api->respond($this->authService->refresh($this->api->decodeBody($request)));
+    }
 }

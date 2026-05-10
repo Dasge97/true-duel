@@ -20,6 +20,7 @@ class _HomeControllerStub extends HomeController {
       name: 'Ada',
       rank: 'Gold',
       mmr: 1400,
+      sp: 1100,
       level: 7,
       experienceTotal: 200,
       experienceToNextLevel: 50,
@@ -49,7 +50,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('JUGAR AHORA'), findsOneWidget);
+    expect(find.text('JUGAR'), findsOneWidget);
   });
 
   testWidgets('shell renders guided hub tabs', (tester) async {
@@ -67,12 +68,13 @@ void main() {
       ),
     );
 
-    await tester.pumpAndSettle();
+    // Use pump instead of pumpAndSettle — shell fires async API loads on init
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Campeones'), findsOneWidget);
-    expect(find.text('Ranked'), findsOneWidget);
-    expect(find.text('Tienda'), findsOneWidget);
-    expect(find.text('Perfil'), findsOneWidget);
+    expect(find.text('HOME'), findsOneWidget);
+    expect(find.text('CAMPEONES'), findsOneWidget);
+    expect(find.text('MOCHILA'), findsOneWidget);
+    expect(find.text('TIENDA'), findsOneWidget);
+    expect(find.text('PERFIL'), findsOneWidget);
   });
 }

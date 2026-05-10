@@ -50,7 +50,6 @@ final class ClasificacionCompetitivaService
             $battleScore,
             $deltaSp,
         );
-        $this->competitiveTitleService->recalculate();
         $perfil = $this->playerProfileRepository->findByPlayerId($playerId);
 
         return [
@@ -59,7 +58,6 @@ final class ClasificacionCompetitivaService
             'deltaSpBase' => $deltaSpBase,
             'antiFarmPenalty' => $antiFarmPenalty,
             'spActual' => $perfil?->puntosHabilidad() ?? 0,
-            'tituloCompetitivo' => $perfil?->tituloCompetitivo() ?? 'Combatiente',
         ];
     }
 
@@ -81,13 +79,11 @@ final class ClasificacionCompetitivaService
             -$abandonPenalty,
         );
 
-        $this->competitiveTitleService->recalculate();
         $perfil = $this->playerProfileRepository->findByPlayerId($playerId);
 
         return [
             'deltaSp' => -$abandonPenalty,
             'spActual' => $perfil?->puntosHabilidad() ?? 0,
-            'tituloCompetitivo' => $perfil?->tituloCompetitivo() ?? 'Combatiente',
             'abandoned' => true,
         ];
     }

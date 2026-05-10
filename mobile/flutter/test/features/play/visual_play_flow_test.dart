@@ -4,8 +4,8 @@ import 'package:http/testing.dart';
 import 'package:juego_mobile/features/mvp/data/mvp_api_repository.dart';
 import 'package:juego_mobile/features/play/presentation/visual_play_flow.dart';
 
-class _RouteApiFake extends MvpApiRepository {
-  _RouteApiFake()
+class _FakeApi extends MvpApiRepository {
+  _FakeApi()
       : super(
           baseUrl: 'http://api.test',
           httpClient: MockClient((_) async => throw UnimplementedError()),
@@ -15,21 +15,28 @@ class _RouteApiFake extends MvpApiRepository {
   Future<Map<String, dynamic>> match(String token, String matchId) async {
     return {
       'state': {
-        'playerHp': 100,
-        'enemyHp': 100,
-        'playerCharges': 0,
-        'currentTurn': 1,
-        'rivalName': 'Hydra',
-        'lastRivalAction': '-',
-        'recentEvents': const [],
+        'playerChampions': [
+          {'id': 'vanguard',  'hp': 100, 'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+          {'id': 'bulwark',   'hp': 100, 'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+          {'id': 'riftblade', 'hp': 100, 'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+        ],
+        'enemyChampions': [
+          {'id': 'vanguard',  'hp': 100, 'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+          {'id': 'bulwark',   'hp': 100, 'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+          {'id': 'riftblade', 'hp': 100, 'charges': 0, 'spentCharges': 0, 'effects': {}, 'guarding': false},
+        ],
+        'turnNo': 1,
+        'serverStateVersion': 1,
+        'winner': null,
+        'recentEvents': [],
       },
     };
   }
 }
 
 void main() {
-  testWidgets('visual play flow opens combat route entry', (tester) async {
-    final api = _RouteApiFake();
+  testWidgets('combatRoute opens CombatScreen and shows champion cards', (tester) async {
+    final api = _FakeApi();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -43,7 +50,6 @@ void main() {
                       token: 'token',
                       api: api,
                       matchId: 'match-1',
-                      championName: 'Assassin',
                       onContinue: () {},
                       onPlayAgain: () {},
                     ),
@@ -60,7 +66,7 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Combate'), findsOneWidget);
-    expect(find.text('Registro reciente (6)'), findsOneWidget);
+    expect(find.text('Vanguard'), findsAtLeastNWidgets(1));
+    expect(find.text('FINALIZAR TURNO'), findsOneWidget);
   });
 }

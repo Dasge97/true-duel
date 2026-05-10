@@ -42,6 +42,10 @@ final class AuthService
             return ['status' => 422, 'data' => ['error' => ['code' => 'INVALID_REGISTER', 'message' => 'username, email, password and displayName are required.']]];
         }
 
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return ['status' => 422, 'data' => ['error' => ['code' => 'INVALID_EMAIL', 'message' => 'Invalid email format.']]];
+        }
+
         if (strlen($password) < 6) {
             return ['status' => 422, 'data' => ['error' => ['code' => 'WEAK_PASSWORD', 'message' => 'Password must be at least 6 characters.']]];
         }
@@ -52,7 +56,7 @@ final class AuthService
         try {
             $this->connection->beginTransaction();
             $this->userRepository->create($playerId, $username, $email, $hash);
-            $this->profileRepository->create($playerId, $displayName, 'Bronce I', 1000, 'eu-west');
+            $this->profileRepository->create($playerId, $displayName, 'Hierro', 1000, 'eu-west');
             $this->jugadorPersonajeRepositorio->inicializarParaJugador($playerId);
             $this->inicializarEquipoBase($playerId);
             $this->connection->commit();
@@ -70,13 +74,15 @@ final class AuthService
             return ['status' => 500, 'data' => ['error' => ['code' => 'REGISTER_FAILED', 'message' => 'Could not register user.']]];
         }
 
-        $token = $this->tokenService->create($playerId, $displayName);
+        $token        = $this->tokenService->create($playerId, $displayName);
+        $refreshToken = $this->tokenService->createRefresh($playerId);
 
         return [
             'status' => 201,
             'data' => [
-                'token' => $token,
-                'user' => ['playerId' => $playerId, 'name' => $displayName, 'username' => $username],
+                'token'        => $token,
+                'refreshToken' => $refreshToken,
+                'user'         => ['playerId' => $playerId, 'name' => $displayName, 'username' => $username],
             ],
         ];
     }
@@ -96,15 +102,48 @@ final class AuthService
             return ['status' => 401, 'data' => ['error' => ['code' => 'INVALID_CREDENTIALS', 'message' => 'Invalid credentials.']]];
         }
 
-        $profile = $this->profileRepository->findByPlayerId($user->id());
-        $displayName = $profile?->displayName() ?? $user->username();
-        $token = $this->tokenService->create($user->id(), $displayName);
+        $profile      = $this->profileRepository->findByPlayerId($user->id());
+        $displayName  = $profile?->displayName() ?? $user->username();
+        $token        = $this->tokenService->create($user->id(), $displayName);
+        $refreshToken = $this->tokenService->createRefresh($user->id());
 
         return [
             'status' => 200,
             'data' => [
-                'token' => $token,
-                'user' => ['playerId' => $user->id(), 'name' => $displayName, 'username' => $user->username()],
+                'token'        => $token,
+                'refreshToken' => $refreshToken,
+                'user'         => ['playerId' => $user->id(), 'name' => $displayName, 'username' => $user->username()],
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $payload */
+    public function refresh(array $payload): array
+    {
+        $refreshToken = trim((string) ($payload['refreshToken'] ?? ''));
+        if ($refreshToken === '') {
+            return ['status' => 422, 'data' => ['error' => ['code' => 'MISSING_REFRESH_TOKEN', 'message' => 'refreshToken is required.']]];
+        }
+
+        $decoded = $this->tokenService->decodeRefresh($refreshToken);
+        if ($decoded === null) {
+            return ['status' => 401, 'data' => ['error' => ['code' => 'INVALID_REFRESH_TOKEN', 'message' => 'Invalid or expired refresh token.']]];
+        }
+
+        $playerId    = $decoded['sub'];
+        $profile     = $this->profileRepository->findByPlayerId($playerId);
+        $user        = $this->userRepository->findById($playerId);
+        $displayName = $profile?->displayName() ?? $user?->username() ?? '';
+
+        if ($displayName === '') {
+            return ['status' => 401, 'data' => ['error' => ['code' => 'PLAYER_NOT_FOUND', 'message' => 'Player not found.']]];
+        }
+
+        return [
+            'status' => 200,
+            'data' => [
+                'token'        => $this->tokenService->create($playerId, $displayName),
+                'refreshToken' => $this->tokenService->createRefresh($playerId),
             ],
         ];
     }

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>True Duel — Diseño completo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: #0A0A0B; }
+  /* Phone wrapper applied inside DCArtboard */
+  .td-frame {
+    width: 100%; height: 100%;
+    background: #000;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 30px 70px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.04);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="td-shell.jsx"></script>
+<script type="text/babel" src="td-auth.jsx"></script>
+<script type="text/babel" src="td-main.jsx"></script>
+<script type="text/babel" src="td-roster.jsx"></script>
+<script type="text/babel" src="td-match.jsx"></script>
+<script type="text/babel" src="td-titles.jsx"></script>
+<script type="text/babel" src="td-mochila.jsx"></script>
+
+<script type="text/babel">
+const PHONE_W = 412;
+const PHONE_H = 892;
+
+function Frame({ children }) {
+  return <div className="td-frame">{children}</div>;
+}
+
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="auth" title="Autenticación" subtitle="Login, registro y estados de carga">
+        <DCArtboard id="login"  label="01 · Login"           width={PHONE_W} height={PHONE_H}><Frame><TDLogin/></Frame></DCArtboard>
+        <DCArtboard id="loadin" label="01b · Login · loading" width={PHONE_W} height={PHONE_H}><Frame><TDLoginLoading/></Frame></DCArtboard>
+        <DCArtboard id="reg"    label="02 · Registro · error API" width={PHONE_W} height={PHONE_H}><Frame><TDRegister/></Frame></DCArtboard>
+      </DCSection>
+
+      <DCSection id="shell" title="Shell principal" subtitle="Las cinco pestañas con cabecera global">
+        <DCArtboard id="home"     label="03 · Home"      width={PHONE_W} height={PHONE_H}><Frame><TDHome/></Frame></DCArtboard>
+        <DCArtboard id="rank"     label="04 · Ranking"   width={PHONE_W} height={PHONE_H}><Frame><TDRanking/></Frame></DCArtboard>
+        <DCArtboard id="mochila"  label="04b · Mochila"  width={PHONE_W} height={PHONE_H}><Frame><TDMochila/></Frame></DCArtboard>
+        <DCArtboard id="champ"    label="05 · Campeones" width={PHONE_W} height={PHONE_H}><Frame><TDCampeones/></Frame></DCArtboard>
+        <DCArtboard id="champd"   label="06 · Detalle de campeón · bottom sheet" width={PHONE_W} height={PHONE_H}><Frame><TDChampDetail/></Frame></DCArtboard>
+        <DCArtboard id="shop"     label="07 · Tienda"    width={PHONE_W} height={PHONE_H}><Frame><TDTienda/></Frame></DCArtboard>
+        <DCArtboard id="profile"  label="08 · Perfil"    width={PHONE_W} height={PHONE_H}><Frame><TDProfile/></Frame></DCArtboard>
+        <DCArtboard id="titulos"  label="08b · Títulos · desglose"  width={PHONE_W} height={PHONE_H}><Frame><TDTitulos/></Frame></DCArtboard>
+        <DCArtboard id="logros"   label="08c · Perfil · logros sheet" width={PHONE_W} height={PHONE_H}><Frame><TDProfileLogros/></Frame></DCArtboard>
+      </DCSection>
+
+      <DCSection id="match" title="Matchmaking → Combate" subtitle="Selección de modo, cola, batalla 3 v 3 y log">
+        <DCArtboard id="mm"       label="09 · Matchmaking · selección" width={PHONE_W} height={PHONE_H}><Frame><TDMatchmaking/></Frame></DCArtboard>
+        <DCArtboard id="mms"      label="10 · Buscando partida"        width={PHONE_W} height={PHONE_H}><Frame><TDMatchSearching/></Frame></DCArtboard>
+        <DCArtboard id="combat"   label="11 · Combate · acción pendiente" width={PHONE_W} height={PHONE_H}><Frame><TDCombat/></Frame></DCArtboard>
+        <DCArtboard id="combatlog"label="11b · Combate · log abierto"  width={PHONE_W} height={PHONE_H}><Frame><TDCombatLog/></Frame></DCArtboard>
+      </DCSection>
+
+      <DCSection id="result" title="Resultado" subtitle="Victoria, derrota y empate · estados post-partida">
+        <DCArtboard id="rv" label="12 · Victoria"  width={PHONE_W} height={PHONE_H}><Frame><TDResultado kind="victory"/></Frame></DCArtboard>
+        <DCArtboard id="rd" label="13 · Derrota"   width={PHONE_W} height={PHONE_H}><Frame><TDResultado kind="defeat"/></Frame></DCArtboard>
+        <DCArtboard id="re" label="14 · Empate"    width={PHONE_W} height={PHONE_H}><Frame><TDResultado kind="draw"/></Frame></DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

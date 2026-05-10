@@ -26,6 +26,15 @@ final class ProfileHttpController
         return $this->api->respond($this->profileService->ranking());
     }
 
+    public function rankingSp(Request $request): JsonResponse
+    {
+        if (($error = $this->api->authError($request)) !== null) {
+            return $error;
+        }
+
+        return $this->api->respond($this->profileService->rankingSp());
+    }
+
     public function users(Request $request): JsonResponse
     {
         if (($error = $this->api->authError($request)) !== null) {

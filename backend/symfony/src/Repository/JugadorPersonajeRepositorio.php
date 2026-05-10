@@ -25,7 +25,7 @@ final class JugadorPersonajeRepositorio
                 [
                     'jugador_id' => $jugadorId,
                     'personaje_id' => (string) $personaje['id'],
-                    'desbloqueado' => $desbloqueado,
+                    'desbloqueado' => (int) $desbloqueado,
                     'desbloqueado_en' => $desbloqueado ? gmdate('Y-m-d H:i:s') : null,
                 ]
             );

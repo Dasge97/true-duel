@@ -31,6 +31,17 @@ final class GameplayHttpController
         );
     }
 
+    public function activeTicket(Request $request): JsonResponse
+    {
+        if (($error = $this->api->authError($request)) !== null) {
+            return $error;
+        }
+
+        return $this->api->respond(
+            $this->gameplayService->activeTicket($this->api->playerId($request))
+        );
+    }
+
     public function ticketStatus(Request $request, string $ticketId): JsonResponse
     {
         if (($error = $this->api->authError($request)) !== null) {

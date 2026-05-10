@@ -17,6 +17,8 @@ use Throwable;
 
 final class TurnResolutionService
 {
+    private const PVP_TURN_TIMEOUT_SECONDS = 90;
+
     public function __construct(
         private readonly Connection $connection,
         private readonly GameMatchRepository $matchRepository,
@@ -33,16 +35,17 @@ final class TurnResolutionService
     /** @param array<string, mixed> $body */
     public function resolveTurn(string $playerId, string $matchId, array $body): array
     {
-        $playerAction = strtolower((string) ($body['action'] ?? 'attack'));
-        if (!in_array($playerAction, ['attack', 'defend', 'special'], true)) {
-            return ['status' => 422, 'data' => ['error' => ['code' => 'INVALID_ACTION', 'message' => 'Action must be attack, defend or special.']]];
+        $rawActions = is_array($body['actions'] ?? null) ? $body['actions'] : [];
+        if ($rawActions === []) {
+            return ['status' => 422, 'data' => ['error' => ['code' => 'INVALID_ACTIONS', 'message' => 'actions[] with at least one entry is required.']]];
         }
 
+        $playerActions = $this->normalizeActions($rawActions);
         $clientVersion = (int) ($body['clientStateVersion'] ?? 0);
-        $idempotencyKey = $this->resolveTurnIdempotencyKey($playerId, $matchId, $playerAction, $clientVersion, $body);
-        $scope = 'match_turn:' . $matchId;
-        $requestHash = $this->requestHash([
-            'action' => $playerAction,
+        $idempotencyKey = $this->resolveTurnIdempotencyKey($playerId, $matchId, $playerActions, $clientVersion, $body);
+        $scope          = 'match_turn:' . $matchId;
+        $requestHash    = $this->requestHash([
+            'actions'           => $playerActions,
             'clientStateVersion' => $clientVersion,
         ]);
 
@@ -69,23 +72,15 @@ final class TurnResolutionService
                 return ['status' => 409, 'data' => ['error' => ['code' => 'MATCH_FINISHED', 'message' => 'Match already completed.']]];
             }
 
-            $state = $match->state();
+            $state         = $match->state();
             $serverVersion = (int) ($state['serverStateVersion'] ?? 0);
             if ($clientVersion < $serverVersion) {
-                $equivalent = $this->turnRepository->findReplayableResult($matchId, $playerId, $clientVersion, $playerAction);
-                if ($equivalent !== null) {
-                    $response = ['status' => 200, 'data' => $equivalent];
-                    $this->storeIdempotent($scope, $playerId, $idempotencyKey, $requestHash, $response);
-                    $this->connection->commit();
-                    return $response;
-                }
-
                 $this->connection->commit();
                 return [
                     'status' => 409,
                     'data' => [
                         'error' => [
-                            'code' => 'STATE_VERSION_CONFLICT',
+                            'code'    => 'STATE_VERSION_CONFLICT',
                             'message' => 'Client state is outdated. Fetch latest state and retry.',
                         ],
                         'authoritativeState' => ['serverStateVersion' => $serverVersion],
@@ -94,245 +89,424 @@ final class TurnResolutionService
             }
 
             $response = $match->opponentPlayerId() !== null && $match->botName() === null
-                ? $this->resolvePvpTurn($match, $playerId, $playerAction, $clientVersion, $serverVersion)
-                : $this->resolveBotTurn($match, $playerId, $playerAction, $clientVersion, $serverVersion);
+                ? $this->resolvePvpTurn($match, $playerId, $playerActions, $clientVersion, $serverVersion)
+                : $this->resolveBotTurn($match, $playerId, $playerActions, $clientVersion, $serverVersion);
 
             $this->storeIdempotent($scope, $playerId, $idempotencyKey, $requestHash, $response);
             $this->connection->commit();
 
             return $response;
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             if ($this->connection->isTransactionActive()) {
                 $this->connection->rollBack();
             }
+
+            error_log('[TurnResolutionService] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
 
             return ['status' => 500, 'data' => ['error' => ['code' => 'TURN_RESOLUTION_FAILED', 'message' => 'Failed to resolve turn.']]];
         }
     }
 
-    private function resolveBotTurn(GameMatch $match, string $playerId, string $playerAction, int $clientVersion, int $serverVersion): array
+    /**
+     * @param list<array{slot:int,action:string,targetSlot:int|null}> $playerActions
+     */
+    private function resolveBotTurn(GameMatch $match, string $playerId, array $playerActions, int $clientVersion, int $serverVersion): array
     {
-        $state = $match->state();
-        $botAction = $this->selectBotAction((int) ($state['enemyCharges'] ?? 0));
-        $resolution = $this->botCombatResolverService->resolverTurnoBot($state, $playerAction, $botAction);
+        $state      = $match->state();
+        $botActions = $this->selectBotActions(
+            $state['enemyChampions'] ?? [],
+            $state['playerChampions'] ?? []
+        );
+
+        $resolution     = $this->botCombatResolverService->resolverTurnoBot($state, $playerActions, $botActions);
         $newCombatState = is_array($resolution['estado'] ?? null) ? $resolution['estado'] : $state;
-        $damageToEnemy = (int) ($resolution['danoAEnemigo'] ?? 0);
-        $damageToPlayer = (int) ($resolution['danoAJugador'] ?? 0);
-        $botAction = (string) ($resolution['accionRival'] ?? $botAction);
+
         $turnNo = (int) ($newCombatState['turnNo'] ?? (((int) ($state['turnNo'] ?? 0)) + 1));
         $serverVersion++;
 
-        $winner = null;
-        $status = 'active';
-        $enemyHp = (int) ($newCombatState['enemyHp'] ?? 100);
-        $playerHp = (int) ($newCombatState['playerHp'] ?? 100);
-        if ($enemyHp <= 0 && $playerHp <= 0) {
-            $winner = 'draw';
-            $status = 'completed';
-        } elseif ($enemyHp <= 0) {
-            $winner = 'player';
-            $status = 'completed';
-        } elseif ($playerHp <= 0) {
-            $winner = 'bot';
-            $status = 'completed';
-        }
+        $winner = $this->detectWinnerBot($newCombatState);
+        $status = $winner !== null ? 'completed' : 'active';
+
+        $damageDealt = (int) ($resolution['damageDealt'] ?? 0);
+        $damageTaken = (int) ($resolution['damageTaken'] ?? 0);
+
+        $attackCount = count(array_filter($playerActions, static fn($a) => ($a['action'] ?? '') === 'attack'));
+        $defendCount = count(array_filter($playerActions, static fn($a) => ($a['action'] ?? '') === 'defend'));
+        $specialCount = count(array_filter($playerActions, static fn($a) => ($a['action'] ?? '') === 'special'));
 
         $newState = [
             ...$newCombatState,
             'serverStateVersion' => $serverVersion,
-            'winner' => $winner,
-            'recentEvents' => $this->pushRecentEvent((array) ($state['recentEvents'] ?? []), [
-                'turn' => $turnNo,
-                'playerAction' => $playerAction,
-                'rivalAction' => $botAction,
-                'playerAttackType' => (string) ($resolution['tipoAtaqueJugador'] ?? 'basico'),
-                'rivalAttackType' => (string) ($resolution['tipoAtaqueRival'] ?? 'basico'),
-                'damageToEnemy' => $damageToEnemy,
-                'damageToPlayer' => $damageToPlayer,
-                'playerActiveEffects' => array_values(is_array($newCombatState['playerActiveEffects'] ?? null) ? $newCombatState['playerActiveEffects'] : []),
-                'enemyActiveEffects' => array_values(is_array($newCombatState['enemyActiveEffects'] ?? null) ? $newCombatState['enemyActiveEffects'] : []),
+            'winner'             => $winner,
+            'recentEvents'       => $this->pushRecentEvent((array) ($state['recentEvents'] ?? []), [
+                'turn'         => $turnNo,
+                'playerEvents' => $resolution['playerEvents'] ?? [],
+                'botEvents'    => $resolution['botEvents'] ?? [],
             ]),
-            'lastRivalAction' => $botAction,
-            'attackCount' => (int) ($state['attackCount'] ?? 0) + ($playerAction === 'attack' ? 1 : 0),
-            'defendCount' => (int) ($state['defendCount'] ?? 0) + ($playerAction === 'defend' ? 1 : 0),
-            'specialCount' => (int) ($state['specialCount'] ?? 0) + ($playerAction === 'special' ? 1 : 0),
-            'damageDealt' => (int) ($state['damageDealt'] ?? 0) + $damageToEnemy,
-            'damageTaken' => (int) ($state['damageTaken'] ?? 0) + $damageToPlayer,
-            'mitigationTotal' => (int) ($state['mitigationTotal'] ?? 0) + (int) ($resolution['mitigacionGanada'] ?? 0),
-            'playerChampionId' => (string) ($state['playerChampionId'] ?? 'vanguard'),
-            'enemyChampionId' => (string) ($state['enemyChampionId'] ?? 'vanguard'),
+            'attackCount'   => (int) ($state['attackCount'] ?? 0) + $attackCount,
+            'defendCount'   => (int) ($state['defendCount'] ?? 0) + $defendCount,
+            'specialCount'  => (int) ($state['specialCount'] ?? 0) + $specialCount,
+            'damageDealt'   => (int) ($state['damageDealt'] ?? 0) + $damageDealt,
+            'damageTaken'   => (int) ($state['damageTaken'] ?? 0) + $damageTaken,
         ];
 
-        $turnResult = [
-            'playerAction' => $playerAction,
-            'botAction' => $botAction,
-            'damageToEnemy' => $damageToEnemy,
-            'damageToPlayer' => $damageToPlayer,
-            'snapshot' => $newState,
-        ];
-
-        $this->recordBotTelemetry($match, $state, $newState, $playerAction, $botAction);
+        $this->recordBotTelemetry($match, $state, $newState);
         if ($status === 'completed') {
             $this->finalizeBotTelemetry($match, $newState, $winner);
         }
+
+        $turnResult = [
+            'playerActions' => $playerActions,
+            'botActions'    => $botActions,
+            'playerEvents'  => $resolution['playerEvents'] ?? [],
+            'botEvents'     => $resolution['botEvents'] ?? [],
+            'snapshot'      => $newState,
+        ];
 
         $this->turnRepository->add(
             $this->uuidGenerator->v4(),
             $match->id(),
             $turnNo,
             $playerId,
-            $playerAction,
+            $this->summarizeActions($playerActions),
             ['clientStateVersion' => $clientVersion],
             $turnResult,
             $serverVersion,
         );
-        if ($playerAction === 'defend') {
-            $this->missionRepository->incrementProgress($playerId, 'use_defense_5', 1);
+
+        if ($defendCount > 0) {
+            $this->missionRepository->incrementProgress($playerId, 'use_defense_5', $defendCount);
         }
+
         $this->matchRepository->updateState($match, $newState, $status);
 
         return [
             'status' => 200,
             'data' => [
-                'turnNo' => $turnNo,
-                'result' => 'ok',
+                'turnNo'             => $turnNo,
+                'result'             => 'ok',
                 'serverStateVersion' => $serverVersion,
-                'snapshot' => $newState,
-                'botAction' => $botAction,
+                'snapshot'           => $newState,
+                'botActions'         => $botActions,
             ],
         ];
     }
 
-    private function resolvePvpTurn(GameMatch $match, string $actorId, string $action, int $clientVersion, int $serverVersion): array
+    /**
+     * @param list<array{slot:int,action:string,targetSlot:int|null}> $playerActions
+     */
+    private function resolvePvpTurn(GameMatch $match, string $actorId, array $playerActions, int $clientVersion, int $serverVersion): array
     {
         $opponentId = $this->resolveOpponentId($match, $actorId);
         if ($opponentId === null) {
             return ['status' => 409, 'data' => ['error' => ['code' => 'PVP_MATCH_INVALID', 'message' => 'PvP match is missing opponent player.']]];
         }
 
-        $state = $match->state();
+        $state           = $match->state();
         $currentPlayerId = (string) ($state['currentPlayerId'] ?? $match->playerId());
+
         if ($currentPlayerId !== $actorId) {
-            return [
-                'status' => 409,
-                'data' => [
-                    'code' => 'NOT_YOUR_TURN',
-                    'error' => [
-                        'code' => 'NOT_YOUR_TURN',
-                        'message' => 'It is not your turn.',
+            $deadline = (int) ($state['pvpTurnDeadlineAt'] ?? 0);
+            if ($deadline === 0 || time() <= $deadline) {
+                return [
+                    'status' => 409,
+                    'data' => [
+                        'code'  => 'NOT_YOUR_TURN',
+                        'error' => [
+                            'code'    => 'NOT_YOUR_TURN',
+                            'message' => 'It is not your turn.',
+                        ],
+                        'authoritativeState' => ['serverStateVersion' => $serverVersion],
                     ],
-                    'authoritativeState' => ['serverStateVersion' => $serverVersion],
-                ],
-            ];
+                ];
+            }
+
+            $idleIsP1      = $currentPlayerId === $match->playerId();
+            $idleActions   = $this->generateDefaultActions($state, $idleIsP1);
+            $idleResolution = $this->pvpCombatResolverService->resolverTurnoPvp($state, $idleIsP1, $idleActions);
+            $state         = is_array($idleResolution['estado'] ?? null) ? $idleResolution['estado'] : $state;
+            $serverVersion++;
+            $idleTurnNo = (int) ($state['turnNo'] ?? 0);
+
+            $this->turnRepository->add(
+                $this->uuidGenerator->v4(),
+                $match->id(),
+                $idleTurnNo,
+                $currentPlayerId,
+                json_encode($idleActions, JSON_THROW_ON_ERROR),
+                ['timeout' => true],
+                ['timeout' => true, 'events' => $idleResolution['events'] ?? []],
+                $serverVersion,
+            );
+            $state['serverStateVersion'] = $serverVersion;
+            $state['currentPlayerId']    = $actorId;
+            $state['pvpTurnDeadlineAt']  = time() + self::PVP_TURN_TIMEOUT_SECONDS;
+            $this->matchRepository->updateState($match, $state, 'active');
         }
 
-        $isActorP1 = $actorId === $match->playerId();
-        $resolution = $this->pvpCombatResolverService->resolverTurnoPvp($state, $isActorP1, $action);
+        $isActorP1  = $actorId === $match->playerId();
+        $resolution = $this->pvpCombatResolverService->resolverTurnoPvp($state, $isActorP1, $playerActions);
+
         $newCombatState = is_array($resolution['estado'] ?? null) ? $resolution['estado'] : $state;
-        $appliedAction = (string) ($resolution['accionAplicada'] ?? $action);
-        $damageToTarget = (int) ($resolution['dano'] ?? 0);
-        $turnNo = (int) ($newCombatState['turnNo'] ?? (((int) ($state['turnNo'] ?? 0)) + 1));
+        $damageDealt    = (int) ($resolution['damageDealt'] ?? 0);
+        $turnNo         = (int) ($newCombatState['turnNo'] ?? (((int) ($state['turnNo'] ?? 0)) + 1));
         $serverVersion++;
 
-        $winner = null;
-        $status = 'active';
-        $p1Hp = (int) ($newCombatState['p1Hp'] ?? 100);
-        $p2Hp = (int) ($newCombatState['p2Hp'] ?? 100);
-        if ($p1Hp <= 0 && $p2Hp <= 0) {
-            $winner = 'draw';
-            $status = 'completed';
-        } elseif ($p2Hp <= 0) {
-            $winner = 'p1';
-            $status = 'completed';
-        } elseif ($p1Hp <= 0) {
-            $winner = 'p2';
-            $status = 'completed';
-        }
+        $winner = $this->detectWinnerPvp($newCombatState);
+        $status = $winner !== null ? 'completed' : 'active';
 
-        $newState = $newCombatState;
+        $attackCount  = count(array_filter($playerActions, static fn($a) => ($a['action'] ?? '') === 'attack'));
+        $defendCount  = count(array_filter($playerActions, static fn($a) => ($a['action'] ?? '') === 'defend'));
+        $specialCount = count(array_filter($playerActions, static fn($a) => ($a['action'] ?? '') === 'special'));
+
+        $newState                       = $newCombatState;
         $newState['serverStateVersion'] = $serverVersion;
-        $newState['winner'] = $winner;
-        $newState['currentPlayerId'] = $status === 'completed' ? null : $opponentId;
-        $newState['lastRivalAction'] = $appliedAction;
-        $newState['recentEvents'] = $this->pushRecentEvent((array) ($state['recentEvents'] ?? []), [
-            'turn' => $turnNo,
-            'actorId' => $actorId,
-            'action' => $appliedAction,
-            'attackType' => (string) ($resolution['tipoAtaque'] ?? 'basico'),
-            'damage' => $damageToTarget,
-            'actorActiveEffects' => array_values(is_array($newCombatState[$isActorP1 ? 'p1ActiveEffects' : 'p2ActiveEffects'] ?? null) ? $newCombatState[$isActorP1 ? 'p1ActiveEffects' : 'p2ActiveEffects'] : []),
-            'targetActiveEffects' => array_values(is_array($newCombatState[$isActorP1 ? 'p2ActiveEffects' : 'p1ActiveEffects'] ?? null) ? $newCombatState[$isActorP1 ? 'p2ActiveEffects' : 'p1ActiveEffects'] : []),
+        $newState['winner']             = $winner;
+        $newState['currentPlayerId']    = $status === 'completed' ? null : $opponentId;
+        $newState['pvpTurnDeadlineAt']  = $status === 'completed' ? 0 : time() + self::PVP_TURN_TIMEOUT_SECONDS;
+        $newState['recentEvents']       = $this->pushRecentEvent((array) ($state['recentEvents'] ?? []), [
+            'turn'     => $turnNo,
+            'actorId'  => $actorId,
+            'events'   => $resolution['events'] ?? [],
         ]);
-        $newState['attackCount'] = (int) ($state['attackCount'] ?? 0) + ($appliedAction === 'attack' ? 1 : 0);
-        $newState['defendCount'] = (int) ($state['defendCount'] ?? 0) + ($appliedAction === 'defend' ? 1 : 0);
-        $newState['specialCount'] = (int) ($state['specialCount'] ?? 0) + ($appliedAction === 'special' ? 1 : 0);
+        $newState['attackCount']  = (int) ($state['attackCount'] ?? 0) + $attackCount;
+        $newState['defendCount']  = (int) ($state['defendCount'] ?? 0) + $defendCount;
+        $newState['specialCount'] = (int) ($state['specialCount'] ?? 0) + $specialCount;
+        $newState['damageDealt']  = (int) ($state['damageDealt'] ?? 0) + $damageDealt;
 
-        $turnResult = [
-            'actorId' => $actorId,
-            'targetId' => $opponentId,
-            'action' => $appliedAction,
-            'damage' => $damageToTarget,
-            'snapshot' => $newState,
-        ];
-
-        $this->recordPvpTelemetry($match, $state, $newState, $isActorP1, $appliedAction);
+        $this->recordPvpTelemetry($match, $state, $newState, $isActorP1);
         if ($status === 'completed') {
             $this->finalizePvpTelemetry($match, $newState, $winner);
         }
+
+        $turnResult = [
+            'actorId'       => $actorId,
+            'targetId'      => $opponentId,
+            'playerActions' => $playerActions,
+            'events'        => $resolution['events'] ?? [],
+            'snapshot'      => $newState,
+        ];
 
         $this->turnRepository->add(
             $this->uuidGenerator->v4(),
             $match->id(),
             $turnNo,
             $actorId,
-            $appliedAction,
+            $this->summarizeActions($playerActions),
             ['clientStateVersion' => $clientVersion],
             $turnResult,
             $serverVersion,
         );
-        if ($appliedAction === 'defend') {
-            $this->missionRepository->incrementProgress($actorId, 'use_defense_5', 1);
+
+        if ($defendCount > 0) {
+            $this->missionRepository->incrementProgress($actorId, 'use_defense_5', $defendCount);
         }
+
         $this->matchRepository->updateState($match, $newState, $status);
 
         return [
             'status' => 200,
             'data' => [
-                'turnNo' => $turnNo,
-                'result' => 'ok',
+                'turnNo'             => $turnNo,
+                'result'             => 'ok',
                 'serverStateVersion' => $serverVersion,
-                'snapshot' => $newState,
-                'nextPlayerId' => $newState['currentPlayerId'],
+                'snapshot'           => $newState,
+                'nextPlayerId'       => $newState['currentPlayerId'],
             ],
         ];
     }
 
-    private function selectBotAction(int $enemyCharges): string
+    /**
+     * Resumen corto de las 3 acciones para guardar en la columna varchar(16) de turns.
+     * Ej: "a,d,s" → slot0=attack, slot1=defend, slot2=special.
+     *
+     * @param list<array{slot:int,action:string,targetSlot:int|null}> $actions
+     */
+    private function summarizeActions(array $actions): string
     {
-        if ($enemyCharges >= 2) {
-            $roll = (new Randomizer())->getInt(1, 100);
-            if ($roll <= 35) {
-                return 'special';
+        $map = ['attack' => 'a', 'defend' => 'd', 'special' => 's'];
+        $parts = [];
+        foreach ($actions as $a) {
+            $parts[] = $map[$a['action'] ?? 'attack'] ?? 'a';
+        }
+
+        return substr(implode(',', $parts), 0, 16);
+    }
+
+    /**
+     * Genera acciones por defecto: todos los campeones vivos atacan al primer objetivo vivo.
+     * Se usa en timeout PvP.
+     *
+     * @param array<string,mixed> $state
+     * @return list<array{slot:int,action:string,targetSlot:int|null}>
+     */
+    private function generateDefaultActions(array $state, bool $actorIsP1): array
+    {
+        $actorKey  = $actorIsP1 ? 'p1Champions' : 'p2Champions';
+        $targetKey = $actorIsP1 ? 'p2Champions' : 'p1Champions';
+
+        $actorChampions  = $state[$actorKey] ?? [];
+        $targetChampions = $state[$targetKey] ?? [];
+
+        $targetSlot = 0;
+        foreach ($targetChampions as $slot => $champ) {
+            if ((int) ($champ['hp'] ?? 0) > 0) {
+                $targetSlot = $slot;
+                break;
             }
         }
 
-        $roll = (new Randomizer())->getInt(1, 100);
-        if ($roll <= 30) {
-            return 'defend';
+        $actions = [];
+        foreach ($actorChampions as $slot => $champ) {
+            if ((int) ($champ['hp'] ?? 0) <= 0) {
+                continue;
+            }
+            $actions[] = ['slot' => $slot, 'action' => 'attack', 'targetSlot' => $targetSlot];
         }
 
-        return 'attack';
+        return $actions;
     }
 
-    /** @param array<string,mixed> $body */
-    private function resolveTurnIdempotencyKey(string $playerId, string $matchId, string $action, int $clientVersion, array $body): string
+    /**
+     * Genera 3 acciones para el bot: cada campeón vivo elige attack/defend/special
+     * y apunta a un campeón vivo del jugador al azar.
+     *
+     * @param list<array<string,mixed>> $enemyChampions
+     * @param list<array<string,mixed>> $playerChampions
+     * @return list<array{slot:int,action:string,targetSlot:int|null}>
+     */
+    private function selectBotActions(array $enemyChampions, array $playerChampions): array
+    {
+        $rng         = new Randomizer();
+        $livingPlayer = array_keys(array_filter($playerChampions, static fn($c) => ((int) ($c['hp'] ?? 0)) > 0));
+
+        if ($livingPlayer === []) {
+            return [];
+        }
+
+        $actions = [];
+        foreach ($enemyChampions as $slot => $champ) {
+            if ((int) ($champ['hp'] ?? 0) <= 0) {
+                continue;
+            }
+
+            $charges = (int) ($champ['charges'] ?? 0);
+            if ($charges >= 2 && $rng->getInt(1, 100) <= 35) {
+                $action = 'special';
+            } elseif ($rng->getInt(1, 100) <= 30) {
+                $action = 'defend';
+            } else {
+                $action = 'attack';
+            }
+
+            $targetSlot = $action === 'defend'
+                ? null
+                : $livingPlayer[$rng->getInt(0, count($livingPlayer) - 1)];
+
+            $actions[] = ['slot' => $slot, 'action' => $action, 'targetSlot' => $targetSlot];
+        }
+
+        return $actions;
+    }
+
+    /**
+     * Normaliza y completa las acciones del jugador a exactamente los slots 0,1,2.
+     *
+     * @param array<mixed> $raw
+     * @return list<array{slot:int,action:string,targetSlot:int|null}>
+     */
+    private function normalizeActions(array $raw): array
+    {
+        $actions = [];
+        $seen    = [];
+
+        foreach ($raw as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $slot = (int) ($item['slot'] ?? 0);
+            if ($slot < 0 || $slot > 2 || isset($seen[$slot])) {
+                continue;
+            }
+            $seen[$slot] = true;
+            $action = strtolower((string) ($item['action'] ?? 'attack'));
+            if (!in_array($action, ['attack', 'defend', 'special'], true)) {
+                $action = 'attack';
+            }
+            $targetSlot = null;
+            if (isset($item['targetSlot']) && is_numeric($item['targetSlot'])) {
+                $ts = (int) $item['targetSlot'];
+                if ($ts >= 0 && $ts <= 2) {
+                    $targetSlot = $ts;
+                }
+            }
+            $actions[$slot] = ['slot' => $slot, 'action' => $action, 'targetSlot' => $targetSlot];
+        }
+
+        for ($i = 0; $i <= 2; $i++) {
+            if (!isset($actions[$i])) {
+                $actions[$i] = ['slot' => $i, 'action' => 'attack', 'targetSlot' => null];
+            }
+        }
+
+        ksort($actions);
+        return array_values($actions);
+    }
+
+    private function detectWinnerBot(array $state): ?string
+    {
+        $playerChampions = $state['playerChampions'] ?? [];
+        $enemyChampions  = $state['enemyChampions'] ?? [];
+        if ($playerChampions === [] || $enemyChampions === []) {
+            return null;
+        }
+        $playerAllDead = count(array_filter($playerChampions, static fn($c) => ((int) ($c['hp'] ?? 0)) > 0)) === 0;
+        $enemyAllDead  = count(array_filter($enemyChampions, static fn($c) => ((int) ($c['hp'] ?? 0)) > 0)) === 0;
+        if ($playerAllDead && $enemyAllDead) {
+            return 'draw';
+        }
+        if ($enemyAllDead) {
+            return 'player';
+        }
+        if ($playerAllDead) {
+            return 'bot';
+        }
+
+        return null;
+    }
+
+    private function detectWinnerPvp(array $state): ?string
+    {
+        $p1Champions = $state['p1Champions'] ?? [];
+        $p2Champions = $state['p2Champions'] ?? [];
+        if ($p1Champions === [] || $p2Champions === []) {
+            return null;
+        }
+        $p1AllDead = count(array_filter($p1Champions, static fn($c) => ((int) ($c['hp'] ?? 0)) > 0)) === 0;
+        $p2AllDead = count(array_filter($p2Champions, static fn($c) => ((int) ($c['hp'] ?? 0)) > 0)) === 0;
+        if ($p1AllDead && $p2AllDead) {
+            return 'draw';
+        }
+        if ($p2AllDead) {
+            return 'p1';
+        }
+        if ($p1AllDead) {
+            return 'p2';
+        }
+
+        return null;
+    }
+
+    /** @param array<string, mixed> $body */
+    private function resolveTurnIdempotencyKey(string $playerId, string $matchId, array $playerActions, int $clientVersion, array $body): string
     {
         $provided = $body['idempotencyKey'] ?? null;
         if (is_string($provided) && trim($provided) !== '') {
             return trim($provided);
         }
 
-        return hash('sha256', implode('|', [$playerId, $matchId, $action, (string) $clientVersion]));
+        $actionsHash = hash('sha256', json_encode($playerActions, JSON_THROW_ON_ERROR));
+        return hash('sha256', implode('|', [$playerId, $matchId, $actionsHash, (string) $clientVersion]));
     }
 
     private function requestHash(array $payload): string
@@ -352,7 +526,7 @@ final class TurnResolutionService
                 'status' => 409,
                 'data' => [
                     'error' => [
-                        'code' => 'IDEMPOTENCY_KEY_REUSED',
+                        'code'    => 'IDEMPOTENCY_KEY_REUSED',
                         'message' => 'Idempotency key was already used with a different request payload.',
                     ],
                 ],
@@ -383,148 +557,72 @@ final class TurnResolutionService
     }
 
     /** @param array<string,mixed> $beforeState @param array<string,mixed> $afterState */
-    private function recordBotTelemetry(GameMatch $match, array $beforeState, array $afterState, string $playerAction, string $botAction): void
+    private function recordBotTelemetry(GameMatch $match, array $beforeState, array $afterState): void
     {
+        $playerChampId = (string) ($beforeState['playerChampions'][0]['id'] ?? 'vanguard');
+        $enemyChampId  = (string) ($beforeState['enemyChampions'][0]['id'] ?? 'vanguard');
+
         $this->championMatchTelemetryRepository->upsertSide(
             $match->id(),
             'player',
             $match->playerId(),
-            (string) ($beforeState['playerChampionId'] ?? 'vanguard'),
+            $playerChampId,
             $match->queueType(),
             true,
-            $this->telemetryDeltaForAction(
-                $playerAction,
-                (array) ($beforeState['efectosJugador'] ?? []),
-                (array) ($afterState['efectosJugador'] ?? []),
-                (array) ($beforeState['efectosRival'] ?? []),
-                (array) ($afterState['efectosRival'] ?? [])
-            )
+            ['attack_actions' => 0, 'defend_actions' => 0, 'special_actions' => 0]
         );
         $this->championMatchTelemetryRepository->upsertSide(
             $match->id(),
             'enemy',
             null,
-            (string) ($beforeState['enemyChampionId'] ?? 'vanguard'),
+            $enemyChampId,
             $match->queueType(),
             true,
-            $this->telemetryDeltaForAction(
-                $botAction,
-                (array) ($beforeState['efectosRival'] ?? []),
-                (array) ($afterState['efectosRival'] ?? []),
-                (array) ($beforeState['efectosJugador'] ?? []),
-                (array) ($afterState['efectosJugador'] ?? [])
-            )
+            ['attack_actions' => 0, 'defend_actions' => 0, 'special_actions' => 0]
         );
     }
 
     /** @param array<string,mixed> $state */
     private function finalizeBotTelemetry(GameMatch $match, array $state, ?string $winner): void
     {
-        $this->championMatchTelemetryRepository->upsertSide(
-            $match->id(),
-            'player',
-            $match->playerId(),
-            (string) ($state['playerChampionId'] ?? 'vanguard'),
-            $match->queueType(),
-            true,
-        );
-        $this->championMatchTelemetryRepository->upsertSide(
-            $match->id(),
-            'enemy',
-            null,
-            (string) ($state['enemyChampionId'] ?? 'vanguard'),
-            $match->queueType(),
-            true,
-        );
+        $playerChampId = (string) ($state['playerChampions'][0]['id'] ?? 'vanguard');
+        $enemyChampId  = (string) ($state['enemyChampions'][0]['id'] ?? 'vanguard');
+
+        $this->championMatchTelemetryRepository->upsertSide($match->id(), 'player', $match->playerId(), $playerChampId, $match->queueType(), true);
+        $this->championMatchTelemetryRepository->upsertSide($match->id(), 'enemy', null, $enemyChampId, $match->queueType(), true);
         $this->championMatchTelemetryRepository->finalizeSide($match->id(), 'player', $winner === 'player' ? 'win' : ($winner === 'draw' ? 'draw' : 'loss'));
         $this->championMatchTelemetryRepository->finalizeSide($match->id(), 'enemy', $winner === 'bot' ? 'win' : ($winner === 'draw' ? 'draw' : 'loss'));
     }
 
     /** @param array<string,mixed> $beforeState @param array<string,mixed> $afterState */
-    private function recordPvpTelemetry(GameMatch $match, array $beforeState, array $afterState, bool $actorIsP1, string $action): void
+    private function recordPvpTelemetry(GameMatch $match, array $beforeState, array $afterState, bool $actorIsP1): void
     {
-        $actorPrefix = $actorIsP1 ? 'p1' : 'p2';
-        $targetPrefix = $actorIsP1 ? 'p2' : 'p1';
-        $sideRef = $actorIsP1 ? 'p1' : 'p2';
-        $playerId = $actorIsP1 ? $match->playerId() : $match->opponentPlayerId();
+        $sideRef       = $actorIsP1 ? 'p1' : 'p2';
+        $champKey      = $actorIsP1 ? 'p1Champions' : 'p2Champions';
+        $playerId      = $actorIsP1 ? $match->playerId() : $match->opponentPlayerId();
+        $actorChampId  = (string) ($beforeState[$champKey][0]['id'] ?? 'vanguard');
 
         $this->championMatchTelemetryRepository->upsertSide(
             $match->id(),
             $sideRef,
             $playerId,
-            (string) ($beforeState[$actorPrefix . 'ChampionId'] ?? 'vanguard'),
+            $actorChampId,
             $match->queueType(),
             false,
-            $this->telemetryDeltaForAction(
-                $action,
-                (array) ($beforeState[$actorPrefix . 'Efectos'] ?? []),
-                (array) ($afterState[$actorPrefix . 'Efectos'] ?? []),
-                (array) ($beforeState[$targetPrefix . 'Efectos'] ?? []),
-                (array) ($afterState[$targetPrefix . 'Efectos'] ?? [])
-            )
+            ['attack_actions' => 0, 'defend_actions' => 0, 'special_actions' => 0]
         );
     }
 
     /** @param array<string,mixed> $state */
     private function finalizePvpTelemetry(GameMatch $match, array $state, ?string $winner): void
     {
-        $this->championMatchTelemetryRepository->upsertSide(
-            $match->id(),
-            'p1',
-            $match->playerId(),
-            (string) ($state['p1ChampionId'] ?? 'vanguard'),
-            $match->queueType(),
-            false,
-        );
-        $this->championMatchTelemetryRepository->upsertSide(
-            $match->id(),
-            'p2',
-            $match->opponentPlayerId(),
-            (string) ($state['p2ChampionId'] ?? 'vanguard'),
-            $match->queueType(),
-            false,
-        );
+        $p1ChampId = (string) ($state['p1Champions'][0]['id'] ?? 'vanguard');
+        $p2ChampId = (string) ($state['p2Champions'][0]['id'] ?? 'vanguard');
+
+        $this->championMatchTelemetryRepository->upsertSide($match->id(), 'p1', $match->playerId(), $p1ChampId, $match->queueType(), false);
+        $this->championMatchTelemetryRepository->upsertSide($match->id(), 'p2', $match->opponentPlayerId(), $p2ChampId, $match->queueType(), false);
         $this->championMatchTelemetryRepository->finalizeSide($match->id(), 'p1', $winner === 'p1' ? 'win' : ($winner === 'draw' ? 'draw' : 'loss'));
         $this->championMatchTelemetryRepository->finalizeSide($match->id(), 'p2', $winner === 'p2' ? 'win' : ($winner === 'draw' ? 'draw' : 'loss'));
-    }
-
-    /** @param array<string,mixed> $beforeActor @param array<string,mixed> $afterActor @param array<string,mixed> $beforeTarget @param array<string,mixed> $afterTarget @return array<string,int> */
-    private function telemetryDeltaForAction(string $action, array $beforeActor, array $afterActor, array $beforeTarget, array $afterTarget): array
-    {
-        $beforeTotals = [
-            'exposed_applied' => $this->effectTotal($beforeActor, $beforeTarget, 'expuesto_turnos'),
-            'fortified_applied' => $this->effectTotal($beforeActor, $beforeTarget, 'fortificado_turnos'),
-            'bleed_applied' => $this->effectTotal($beforeActor, $beforeTarget, 'hemorragia_turnos'),
-            'overload_applied' => $this->effectTotal($beforeActor, $beforeTarget, 'sobrecarga_turnos'),
-            'silence_applied' => $this->effectTotal($beforeActor, $beforeTarget, 'silencio_tactico_turnos'),
-            'shield_applied' => $this->effectTotal($beforeActor, $beforeTarget, 'escudo_turnos') + $this->effectTotal($beforeActor, $beforeTarget, 'escudo_puntos'),
-        ];
-        $afterTotals = [
-            'exposed_applied' => $this->effectTotal($afterActor, $afterTarget, 'expuesto_turnos'),
-            'fortified_applied' => $this->effectTotal($afterActor, $afterTarget, 'fortificado_turnos'),
-            'bleed_applied' => $this->effectTotal($afterActor, $afterTarget, 'hemorragia_turnos'),
-            'overload_applied' => $this->effectTotal($afterActor, $afterTarget, 'sobrecarga_turnos'),
-            'silence_applied' => $this->effectTotal($afterActor, $afterTarget, 'silencio_tactico_turnos'),
-            'shield_applied' => $this->effectTotal($afterActor, $afterTarget, 'escudo_turnos') + $this->effectTotal($afterActor, $afterTarget, 'escudo_puntos'),
-        ];
-
-        return [
-            'attack_actions' => $action === 'attack' ? 1 : 0,
-            'defend_actions' => $action === 'defend' ? 1 : 0,
-            'special_actions' => $action === 'special' ? 1 : 0,
-            'exposed_applied' => $afterTotals['exposed_applied'] > $beforeTotals['exposed_applied'] ? 1 : 0,
-            'fortified_applied' => $afterTotals['fortified_applied'] > $beforeTotals['fortified_applied'] ? 1 : 0,
-            'bleed_applied' => $afterTotals['bleed_applied'] > $beforeTotals['bleed_applied'] ? 1 : 0,
-            'overload_applied' => $afterTotals['overload_applied'] > $beforeTotals['overload_applied'] ? 1 : 0,
-            'silence_applied' => $afterTotals['silence_applied'] > $beforeTotals['silence_applied'] ? 1 : 0,
-            'shield_applied' => $afterTotals['shield_applied'] > $beforeTotals['shield_applied'] ? 1 : 0,
-        ];
-    }
-
-    /** @param array<string,mixed> $actorEffects @param array<string,mixed> $targetEffects */
-    private function effectTotal(array $actorEffects, array $targetEffects, string $key): int
-    {
-        return max(0, (int) ($actorEffects[$key] ?? 0)) + max(0, (int) ($targetEffects[$key] ?? 0));
     }
 
     private function matchBelongsToPlayer(string $p1Id, ?string $p2Id, string $playerId): bool

@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"C:\\\\AreaDeTrabajo\\\\PROYECTOS\\\\true-duel\" -Recurse -Directory | ForEach-Object { $_.FullName -replace [regex]::Escape\\('C:\\\\AreaDeTrabajo\\\\PROYECTOS\\\\true-duel'\\), '.' } | Sort-Object | Select-Object -First 100)",
+      "Bash(docker compose *)",
+      "PowerShell(docker info *)",
+      "Bash(docker exec true-duel-api *)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\AreaDeTrabajo\\\\PROYECTOS\\\\true-duel\\\\backend\\\\symfony\\\\var\\\\cache\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Output \"Cache eliminado\")",
+      "PowerShell(Remove-Item *)",
+      "Bash(curl *)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:8080/health\" -Method GET | ConvertTo-Json -Depth 5)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:8080/health\" -Method GET | ConvertTo-Json -Depth 3)",
+      "PowerShell($resp = Invoke-WebRequest -Uri \"http://localhost:8080/health\" -Method GET ; \"Status: $\\($resp.StatusCode\\)\" ; \"Body: $\\($resp.Content\\)\")",
+      "Bash(wget *)",
+      "PowerShell($wc = New-Object System.Net.WebClient; $wc.Headers[\"Content-Type\"] = \"application/json\"; $body = '{\"username\":\"devtest01\",\"email\":\"devtest01@test.com\",\"password\":\"123456\"}'; try { $result = $wc.UploadString\\(\"http://localhost:8080/v1/auth/register\", \"POST\", $body\\); Write-Host $result } catch { Write-Host \"Error: $_\" })",
+      "PowerShell(Out-File *)",
+      "PowerShell(New-Item *)",
+      "Bash(echo \"EXIT:$?\")",
+      "PowerShell(docker exec true-duel-api *)",
+      "PowerShell(docker restart true-duel-api *)",
+      "Bash(docker exec true-duel-db *)",
+      "Bash(grep *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\AreaDeTrabajo\\\\PROYECTOS\\\\true-duel\\\\mobile\\\\flutter\" -Directory)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(flutter analyze *)",
+      "Bash(echo \"test\")",
+      "Bash(del \"C:\\\\AreaDeTrabajo\\\\PROYECTOS\\\\true-duel\\\\.claude\\\\test_perm.txt\")"
+    ]
+  }
+}

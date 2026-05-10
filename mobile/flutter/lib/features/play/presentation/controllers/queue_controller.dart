@@ -80,7 +80,17 @@ class QueueController extends ChangeNotifier {
         region: queued.region,
       );
     } on MvpApiException catch (e) {
-      errorCode = e.code;
+      if (e.code == 'MATCH_ALREADY_ACTIVE') {
+        // Ya existe una partida activa: cargamos el ticket para navegar a ella
+        try {
+          activeTicket = await api.latestActiveTicket(token);
+          errorCode = null;
+        } catch (_) {
+          errorCode = e.code;
+        }
+      } else {
+        errorCode = e.code;
+      }
     } finally {
       isBusy = false;
       notifyListeners();

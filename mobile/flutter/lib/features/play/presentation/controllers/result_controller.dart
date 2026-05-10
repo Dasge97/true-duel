@@ -12,9 +12,13 @@ class ResultController {
     required this.defendCount,
     required this.specialCount,
     required this.mitigationTotal,
+    this.spDelta,
+    this.isRanked = false,
   });
 
   factory ResultController.fromSettlement(Map<String, dynamic> settlement) {
+    final competitivo = settlement['competitivo'] as Map<String, dynamic>?;
+    final spDelta = competitivo?['deltaSp'] as int?;
     return ResultController(
       result: (settlement['result'] as String? ?? 'draw').toLowerCase(),
       mmrDelta: settlement['mmrDelta'] as int? ?? 0,
@@ -28,6 +32,8 @@ class ResultController {
       defendCount: settlement['defendCount'] as int? ?? 0,
       specialCount: settlement['specialCount'] as int? ?? 0,
       mitigationTotal: settlement['mitigationTotal'] as int? ?? 0,
+      spDelta: spDelta,
+      isRanked: competitivo != null,
     );
   }
 
@@ -43,6 +49,8 @@ class ResultController {
   final int defendCount;
   final int specialCount;
   final int mitigationTotal;
+  final int? spDelta;
+  final bool isRanked;
 
   bool get victory => result == 'victory' || result == 'win' || result == 'player';
 }

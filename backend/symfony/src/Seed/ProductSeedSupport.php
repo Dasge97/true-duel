@@ -134,7 +134,7 @@ final class ProductSeedSupport
                     'habilidad_especial_descripcion' => $row['detalle'],
                     'efecto_especial_json' => json_encode($row['efecto'], JSON_THROW_ON_ERROR),
                     'coste_cargas' => 2,
-                    'desbloqueado_inicial' => $row['inicial'],
+                    'desbloqueado_inicial' => (int) $row['inicial'],
                     'precio_monedas' => $row['precio'],
                     'orden' => $row['orden'],
                 ]
@@ -245,12 +245,12 @@ final class ProductSeedSupport
     private function seedUsersAndProfiles(): void
     {
         $seedUsers = [
-            ['id' => '11111111-1111-1111-1111-111111111111', 'username' => 'playerone', 'email' => 'playerone@trueduel.local', 'display_name' => 'Player One', 'rank_label' => 'Silver II', 'mmr_global' => 1210, 'puntos_habilidad' => 1210, 'coins' => 1600, 'gems' => 25, 'experience_total' => 560, 'level' => 4],
-            ['id' => '22222222-2222-2222-2222-222222222222', 'username' => 'raven', 'email' => 'raven@trueduel.local', 'display_name' => 'Raven', 'rank_label' => 'Gold I', 'mmr_global' => 1450, 'puntos_habilidad' => 1450, 'coins' => 2000, 'gems' => 55, 'experience_total' => 980, 'level' => 6],
-            ['id' => '33333333-3333-3333-3333-333333333333', 'username' => 'nova', 'email' => 'nova@trueduel.local', 'display_name' => 'Nova', 'rank_label' => 'Gold II', 'mmr_global' => 1410, 'puntos_habilidad' => 1410, 'coins' => 1800, 'gems' => 40, 'experience_total' => 860, 'level' => 5],
-            ['id' => '44444444-4444-4444-4444-444444444444', 'username' => 'ember', 'email' => 'ember@trueduel.local', 'display_name' => 'Ember', 'rank_label' => 'Silver I', 'mmr_global' => 1320, 'puntos_habilidad' => 1320, 'coins' => 900, 'gems' => 10, 'experience_total' => 410, 'level' => 3],
-            ['id' => '55555555-5555-5555-5555-555555555555', 'username' => 'atlas', 'email' => 'atlas@trueduel.local', 'display_name' => 'Atlas', 'rank_label' => 'Bronce I', 'mmr_global' => 1100, 'puntos_habilidad' => 1100, 'coins' => 750, 'gems' => 5, 'experience_total' => 180, 'level' => 2],
-            ['id' => '66666666-6666-6666-6666-666666666666', 'username' => 'luna', 'email' => 'luna@trueduel.local', 'display_name' => 'Luna', 'rank_label' => 'Plata III', 'mmr_global' => 1260, 'puntos_habilidad' => 1260, 'coins' => 1200, 'gems' => 18, 'experience_total' => 630, 'level' => 4],
+            ['id' => '11111111-1111-1111-1111-111111111111', 'username' => 'playerone', 'email' => 'playerone@trueduel.local', 'display_name' => 'Player One', 'rank_label' => 'Bronce', 'mmr_global' => 1210, 'puntos_habilidad' => 1210, 'coins' => 1600, 'gems' => 25, 'experience_total' => 560, 'level' => 4],
+            ['id' => '22222222-2222-2222-2222-222222222222', 'username' => 'raven', 'email' => 'raven@trueduel.local', 'display_name' => 'Raven', 'rank_label' => 'Plata', 'mmr_global' => 1450, 'puntos_habilidad' => 1450, 'coins' => 2000, 'gems' => 55, 'experience_total' => 980, 'level' => 6],
+            ['id' => '33333333-3333-3333-3333-333333333333', 'username' => 'nova', 'email' => 'nova@trueduel.local', 'display_name' => 'Nova', 'rank_label' => 'Plata', 'mmr_global' => 1410, 'puntos_habilidad' => 1410, 'coins' => 1800, 'gems' => 40, 'experience_total' => 860, 'level' => 5],
+            ['id' => '44444444-4444-4444-4444-444444444444', 'username' => 'ember', 'email' => 'ember@trueduel.local', 'display_name' => 'Ember', 'rank_label' => 'Bronce', 'mmr_global' => 1320, 'puntos_habilidad' => 1320, 'coins' => 900, 'gems' => 10, 'experience_total' => 410, 'level' => 3],
+            ['id' => '55555555-5555-5555-5555-555555555555', 'username' => 'atlas', 'email' => 'atlas@trueduel.local', 'display_name' => 'Atlas', 'rank_label' => 'Hierro', 'mmr_global' => 1100, 'puntos_habilidad' => 1100, 'coins' => 750, 'gems' => 5, 'experience_total' => 180, 'level' => 2],
+            ['id' => '66666666-6666-6666-6666-666666666666', 'username' => 'luna', 'email' => 'luna@trueduel.local', 'display_name' => 'Luna', 'rank_label' => 'Bronce', 'mmr_global' => 1260, 'puntos_habilidad' => 1260, 'coins' => 1200, 'gems' => 18, 'experience_total' => 630, 'level' => 4],
         ];
 
         foreach ($seedUsers as $seed) {
@@ -320,7 +320,7 @@ final class ProductSeedSupport
                     [
                         'jugador_id' => $playerId,
                         'personaje_id' => $personajeId,
-                        'desbloqueado' => $desbloqueado,
+                        'desbloqueado' => (int) $desbloqueado,
                         'desbloqueado_en' => $desbloqueado ? gmdate('Y-m-d H:i:s') : null,
                     ]
                 );
@@ -349,9 +349,9 @@ final class ProductSeedSupport
     private function seedInventory(): void
     {
         foreach ([
-            ['player_id' => '11111111-1111-1111-1111-111111111111', 'item_id' => 'skin_dorada', 'item_type' => 'skin', 'quantity' => 1, 'equipped' => true],
-            ['player_id' => '11111111-1111-1111-1111-111111111111', 'item_id' => 'avatar_legendario', 'item_type' => 'avatar', 'quantity' => 1, 'equipped' => true],
-            ['player_id' => '22222222-2222-2222-2222-222222222222', 'item_id' => 'efecto_victoria', 'item_type' => 'effect', 'quantity' => 1, 'equipped' => true],
+            ['player_id' => '11111111-1111-1111-1111-111111111111', 'item_id' => 'skin_dorada', 'item_type' => 'skin', 'quantity' => 1, 'equipped' => 1],
+            ['player_id' => '11111111-1111-1111-1111-111111111111', 'item_id' => 'avatar_legendario', 'item_type' => 'avatar', 'quantity' => 1, 'equipped' => 1],
+            ['player_id' => '22222222-2222-2222-2222-222222222222', 'item_id' => 'efecto_victoria', 'item_type' => 'effect', 'quantity' => 1, 'equipped' => 1],
         ] as $row) {
             $this->connection->executeStatement(
                 'INSERT INTO player_inventory (player_id, item_id, item_type, quantity, equipped, acquired_at, updated_at)
@@ -409,7 +409,7 @@ final class ProductSeedSupport
                         'progress_value' => $progress,
                         'reward_xp' => (int) ($mission['reward_xp'] ?? 0),
                         'reward_coins' => (int) ($mission['reward_coins'] ?? 0),
-                        'claimed' => $claimed,
+                        'claimed' => (int) $claimed,
                     ]
                 );
             }

@@ -49,6 +49,19 @@ final class PlayerProfileRepository
         return $this->entityManager->createQueryBuilder()
             ->select('p')
             ->from(PlayerProfile::class, 'p')
+            ->orderBy('p.mmrGlobal', 'DESC')
+            ->addOrderBy('p.puntosHabilidad', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /** @return list<PlayerProfile> */
+    public function findRankingBySp(int $limit = 100): array
+    {
+        return $this->entityManager->createQueryBuilder()
+            ->select('p')
+            ->from(PlayerProfile::class, 'p')
             ->orderBy('p.puntosHabilidad', 'DESC')
             ->addOrderBy('p.mmrGlobal', 'DESC')
             ->setMaxResults($limit)

@@ -13,97 +13,193 @@ final class PvpCombatResolverService
     }
 
     /**
+     * Resuelve las 3 acciones del actor (P1 o P2) contra el equipo rival.
+     * Turno alternado: el actor actúa, el rival actúa en su propio turno.
+     *
      * @param array<string,mixed> $estado
+     * @param list<array{slot:int,action:string,targetSlot:int|null}> $acciones
      * @return array<string,mixed>
      */
-    public function resolverTurnoPvp(array $estado, bool $actorEsP1, string $accion): array
+    public function resolverTurnoPvp(array $estado, bool $actorEsP1, array $acciones): array
     {
-        $snapshot = $this->combatStateMapper->readPvpState($estado, $actorEsP1);
-        $turno = (int) $snapshot['turnNo'] + 1;
-        $actorHp = (int) $snapshot['actorHp'];
-        $objetivoHp = (int) $snapshot['targetHp'];
-        $actorCargas = (int) $snapshot['actorCharges'];
-        $objetivoGuardia = (bool) $snapshot['targetGuarding'];
-        $actorPersonaje = (string) $snapshot['actorChampionId'];
-        $objetivoPersonaje = (string) $snapshot['targetChampionId'];
-        $actorEfectos = $snapshot['actorEffects'];
-        $objetivoEfectos = $snapshot['targetEffects'];
-        $actorSinergias = $snapshot['actorSynergies'];
-        $objetivoSinergias = $snapshot['targetSynergies'];
-        $bonificador = $snapshot['modifier'];
+        $snapshot        = $this->combatStateMapper->readPvpState($estado, $actorEsP1);
+        $turno           = $snapshot['turnNo'] + 1;
+        $actorChampions  = $snapshot['actorChampions'];
+        $targetChampions = $snapshot['targetChampions'];
+        $actorSynergies  = $snapshot['actorSynergies'];
+        $targetSynergies = $snapshot['targetSynergies'];
+        $modifier        = $snapshot['modifier'];
 
-        $resultadoAccion = $this->combatRulesEngine->resolverAccion(
-            $accion,
-            $actorPersonaje,
-            $actorCargas,
-            (int) $snapshot['actorSpentCharges'],
-            $actorEfectos,
-            $objetivoEfectos,
-            $actorSinergias,
-            $bonificador,
+        $events      = [];
+        $damageDealt = 0;
+
+        foreach ($acciones as $accion) {
+            $actorSlot  = (int) ($accion['slot'] ?? 0);
+            $targetSlot = isset($accion['targetSlot']) ? (int) $accion['targetSlot'] : null;
+            $action     = (string) ($accion['action'] ?? 'attack');
+
+            if (!isset($actorChampions[$actorSlot]) || $actorChampions[$actorSlot]['hp'] <= 0) {
+                continue;
+            }
+
+            $effectiveTarget = $this->findLivingTarget($targetChampions, $targetSlot);
+            if ($effectiveTarget === null) {
+                break;
+            }
+
+            $actorChamp  = $actorChampions[$actorSlot];
+            $targetChamp = $targetChampions[$effectiveTarget];
+
+            $resultado = $this->combatRulesEngine->resolverAccion(
+                $action,
+                $actorChamp['id'],
+                $actorChamp['charges'],
+                $actorChamp['spentCharges'],
+                $actorChamp['effects'],
+                $targetChamp['effects'],
+                $actorSynergies,
+                $modifier,
+                $turno,
+                $targetChamp['hp']
+            );
+
+            $accionAplicada = (string) $resultado['accionAplicada'];
+
+            $actorChampions[$actorSlot]['charges']        = (int) $resultado['cargas'];
+            $actorChampions[$actorSlot]['spentCharges']   = $actorChamp['spentCharges'] + (int) ($resultado['cargasGastadas'] ?? 0);
+            $actorChampions[$actorSlot]['effects']        = $resultado['efectosActor'];
+            $actorChampions[$actorSlot]['guarding']       = ($accionAplicada === 'defend');
+            $targetChampions[$effectiveTarget]['effects'] = $resultado['efectosObjetivo'];
+
+            $finalDamage = 0;
+
+            if ($accionAplicada !== 'defend') {
+                $finalDamage = $this->applyDamagePipeline(
+                    (int) $resultado['dano'],
+                    $targetChampions[$effectiveTarget],
+                    $targetSynergies,
+                    $modifier,
+                    $turno
+                );
+
+                $targetChampions[$effectiveTarget]['hp'] = max(
+                    0,
+                    $targetChampions[$effectiveTarget]['hp'] - $finalDamage
+                );
+
+                $danoPropio = (int) ($resultado['danoPropio'] ?? 0);
+                if ($danoPropio > 0) {
+                    $actorChampions[$actorSlot]['hp'] = max(0, $actorChamp['hp'] - $danoPropio);
+                }
+
+                $damageDealt += $finalDamage;
+            }
+
+            $events[] = [
+                'actorSlot'  => $actorSlot,
+                'targetSlot' => $effectiveTarget,
+                'action'     => $accionAplicada,
+                'damage'     => $finalDamage,
+            ];
+        }
+
+        $actorChampions  = $this->applyEndOfTurnEffects($actorChampions);
+        $targetChampions = array_values($targetChampions);
+
+        $estadoNuevo = $this->combatStateMapper->writePvpState(
+            $estado,
+            $actorEsP1,
             $turno,
-            $objetivoHp
+            $actorChampions,
+            $targetChampions,
+            $actorSynergies,
+            $targetSynergies,
+            $modifier
         );
 
-        $accionAplicada = (string) ($resultadoAccion['accionAplicada'] ?? 'attack');
-        $danoBruto = (int) ($resultadoAccion['dano'] ?? 0);
-        $actorCargas = (int) ($resultadoAccion['cargas'] ?? $actorCargas);
-        $actorEfectos = $this->combatRulesEngine->normalizarEfectos($resultadoAccion['efectosActor'] ?? []);
-        $objetivoEfectos = $this->combatRulesEngine->normalizarEfectos($resultadoAccion['efectosObjetivo'] ?? []);
-        $actorGuardia = $accionAplicada === 'defend';
-
-        $dano = $danoBruto;
-        if ($objetivoGuardia) {
-            $dano = $this->combatRulesEngine->aplicarMitigacionDefensa(
-                $dano,
-                'defend',
-                $objetivoPersonaje,
-                $objetivoSinergias,
-                $objetivoEfectos
-            );
-            $objetivoGuardia = false;
-        }
-        if (((int) ($objetivoEfectos['mitigacion_turnos'] ?? 0)) > 0) {
-            $dano = (int) floor($dano * 0.75);
-        }
-        if (((int) ($objetivoEfectos['fortificado_turnos'] ?? 0)) > 0) {
-            $dano = (int) floor($dano * 0.8);
-        }
-        $dano = $this->combatRulesEngine->aplicarEscudoIntermitente($dano, $bonificador, ((int) ($objetivoEfectos['bloqueo_rng_turnos'] ?? 0)) > 0);
-        $dano = $this->combatRulesEngine->aplicarBonificadorDano($dano, $turno, $bonificador);
-        $dano = $this->combatRulesEngine->limitarDano($dano);
-        [$dano, $objetivoEfectos] = $this->combatRulesEngine->absorberEscudo($dano, $objetivoEfectos);
-
-        $objetivoHp = max(0, $objetivoHp - $dano);
-        $actorHp = max(0, $actorHp - (int) ($resultadoAccion['danoPropio'] ?? 0));
-
-        [$actorHp, $actorEfectos] = $this->combatRulesEngine->aplicarCuracionYLimpieza($actorHp, $actorEfectos);
-        [$objetivoHp, $objetivoEfectos] = $this->combatRulesEngine->aplicarCuracionYLimpieza($objetivoHp, $objetivoEfectos);
-        [$actorHp, $actorEfectos] = $this->combatRulesEngine->aplicarEfectosFinTurno($actorHp, $actorEfectos);
-        [$objetivoHp, $objetivoEfectos] = $this->combatRulesEngine->aplicarEfectosFinTurno($objetivoHp, $objetivoEfectos);
-        $actorEfectos = $this->combatRulesEngine->consumirTurnoEfectos($actorEfectos);
-        $objetivoEfectos = $this->combatRulesEngine->consumirTurnoEfectos($objetivoEfectos);
-
-        $estadoNuevo = $this->combatStateMapper->writePvpState($estado, $actorEsP1, [
-            'turnNo' => $turno,
-            'actorHp' => $actorHp,
-            'targetHp' => $objetivoHp,
-            'actorCharges' => $actorCargas,
-            'actorGuarding' => $actorGuardia,
-            'targetGuarding' => $objetivoGuardia,
-            'actorEffects' => $actorEfectos,
-            'targetEffects' => $objetivoEfectos,
-            'modifier' => $bonificador,
-            'actorSpentCharges' => (int) $snapshot['actorSpentCharges'] + (int) ($resultadoAccion['cargasGastadas'] ?? 0),
-            'lastAttackType' => (string) ($resultadoAccion['tipoAtaque'] ?? 'basico'),
-        ]);
-
         return [
-            'estado' => $estadoNuevo,
-            'accionAplicada' => $accionAplicada,
-            'dano' => $dano,
-            'tipoAtaque' => (string) ($resultadoAccion['tipoAtaque'] ?? 'basico'),
-            'mitigacionGanada' => max(0, $danoBruto - $dano),
+            'estado'      => $estadoNuevo,
+            'events'      => $events,
+            'damageDealt' => $damageDealt,
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $targetChamp (modificado por referencia — guarding y effects pueden cambiar)
+     * @param array<string,mixed> $targetSynergies
+     * @param array<string,mixed> $modifier
+     */
+    private function applyDamagePipeline(
+        int $danoRaw,
+        array &$targetChamp,
+        array $targetSynergies,
+        array $modifier,
+        int $turno
+    ): int {
+        $effects = $targetChamp['effects'];
+
+        if ((bool) $targetChamp['guarding']) {
+            $danoRaw = $this->combatRulesEngine->aplicarMitigacionDefensa(
+                $danoRaw,
+                'defend',
+                $targetChamp['id'],
+                $targetSynergies,
+                $effects
+            );
+            $targetChamp['guarding'] = false;
+        }
+
+        if ((int) ($effects['mitigacion_turnos'] ?? 0) > 0) {
+            $danoRaw = (int) floor($danoRaw * 0.75);
+        }
+        if ((int) ($effects['fortificado_turnos'] ?? 0) > 0) {
+            $danoRaw = (int) floor($danoRaw * 0.8);
+        }
+
+        $bloqueoRng = (int) ($effects['bloqueo_rng_turnos'] ?? 0) > 0;
+        $danoRaw    = $this->combatRulesEngine->aplicarEscudoIntermitente($danoRaw, $modifier, $bloqueoRng);
+        $danoRaw    = $this->combatRulesEngine->aplicarBonificadorDano($danoRaw, $turno, $modifier);
+        $danoRaw    = $this->combatRulesEngine->limitarDano($danoRaw);
+
+        [$finalDamage, $newEffects] = $this->combatRulesEngine->absorberEscudo($danoRaw, $effects);
+        $targetChamp['effects'] = $newEffects;
+
+        return $finalDamage;
+    }
+
+    /** @param list<array<string,mixed>> $champions @return list<array<string,mixed>> */
+    private function applyEndOfTurnEffects(array $champions): array
+    {
+        foreach ($champions as &$champ) {
+            if ($champ['hp'] <= 0) {
+                continue;
+            }
+            [$champ['hp'], $champ['effects']] = $this->combatRulesEngine->aplicarCuracionYLimpieza($champ['hp'], $champ['effects']);
+            [$champ['hp'], $champ['effects']] = $this->combatRulesEngine->aplicarEfectosFinTurno($champ['hp'], $champ['effects']);
+            $champ['effects'] = $this->combatRulesEngine->consumirTurnoEfectos($champ['effects']);
+            $champ['hp']      = max(0, $champ['hp']);
+        }
+        unset($champ);
+
+        return array_values($champions);
+    }
+
+    /** @param list<array<string,mixed>> $champions */
+    private function findLivingTarget(array $champions, ?int $preferred): ?int
+    {
+        if ($preferred !== null && isset($champions[$preferred]) && $champions[$preferred]['hp'] > 0) {
+            return $preferred;
+        }
+
+        $start = $preferred ?? 0;
+        $count = count($champions);
+        for ($offset = 0; $offset < $count; $offset++) {
+            $slot = ($start + $offset) % $count;
+            if (isset($champions[$slot]) && $champions[$slot]['hp'] > 0) {
+                return $slot;
+            }
+        }
+
+        return null;
     }
 }

@@ -10,3 +10,11 @@ services:
     resource: '../src/'
     exclude:
       - '../src/Entity/'
+
+  App\Controller\:
+    resource: '../src/Controller/'
+    tags: ['controller.service_arguments']
+
+  App\Service\TokenService:
+    arguments:
+      $secret: '%env(APP_SECRET)%'

@@ -19,11 +19,11 @@ final class MatchBooster
         private string $name,
         #[ORM\Column(name: 'categoria_volatilidad', type: 'string', length: 16)]
         private string $volatilityCategory,
-        #[ORM\Column(type: 'text')]
+        #[ORM\Column(name: 'descripcion', type: 'text')]
         private string $description,
         #[ORM\Column(name: 'reglas_json', type: 'json')]
         private array $rules,
-        #[ORM\Column(type: 'boolean')]
+        #[ORM\Column(name: 'activo', type: 'boolean')]
         private bool $active,
         #[ORM\Column(name: 'orden', type: 'integer')]
         private int $sortOrder,

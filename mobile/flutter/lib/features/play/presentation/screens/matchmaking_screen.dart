@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/theme/duel_theme.dart';
+import '../../../../core/widgets/td_button.dart';
+import '../../../../core/widgets/td_champion_glyph.dart';
 import '../controllers/queue_controller.dart';
 
 class MatchmakingScreen extends StatefulWidget {
@@ -27,13 +30,17 @@ class MatchmakingScreen extends StatefulWidget {
   State<MatchmakingScreen> createState() => _MatchmakingScreenState();
 }
 
-class _MatchmakingScreenState extends State<MatchmakingScreen> with SingleTickerProviderStateMixin {
+class _MatchmakingScreenState extends State<MatchmakingScreen>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _pulseController;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat(reverse: true);
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
     widget.controller.loadActiveTicket();
   }
 
@@ -48,7 +55,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> with SingleTicker
       MaterialPageRoute<void>(
         builder: (_) => _QueueSearchingScreen(
           controller: widget.controller,
-          selectedMode: widget.controller.activeTicket?.queue ?? widget.controller.selectedMode,
+          selectedMode:
+              widget.controller.activeTicket?.queue ??
+              widget.controller.selectedMode,
           onOpenMatch: widget.onOpenMatch,
         ),
       ),
@@ -73,78 +82,157 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    final duel = context.duel;
+    final td = context.td;
     return Scaffold(
+      backgroundColor: td.bg,
       body: SafeArea(
         child: AnimatedBuilder(
           animation: widget.controller,
           builder: (context, _) {
             final c = widget.controller;
-            final selectedMode = c.modeLocked ? (c.activeTicket?.queue ?? c.selectedMode) : c.selectedMode;
+            final selectedMode = c.modeLocked
+                ? (c.activeTicket?.queue ?? c.selectedMode)
+                : c.selectedMode;
             final canEnqueue = !c.isBusy;
 
             return Column(
               children: [
+                // ── Back bar ─────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: td.border),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).maybePop(),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: td.border2),
+                          ),
+                          child: Icon(
+                            Icons.arrow_back,
+                            size: 14,
+                            color: td.fg,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'MATCHMAKING',
+                        style: TdText.display(22, letterSpacing: 1.32),
+                      ),
+                      const Spacer(),
+                    ],
+                  ),
+                ),
+
+                // ── Scrollable content ────────────────────────────────
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
                     children: [
-                      _TopBar(
+                      // Captain card
+                      _CaptainCard(
                         championName: widget.championName,
                         playerRank: widget.playerRank,
                         playerMmr: widget.playerMmr,
                       ),
-                      const SizedBox(height: 18),
-                      Text('Selecciona modo', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 10),
-                      ...QueueController.queueModes.map(
-                        (mode) => _ModeCard(
-                          data: _modeUiData(mode),
-                          selected: selectedMode == mode,
-                          locked: c.modeLocked,
-                          pulse: _pulseController,
-                          onTap: () => c.selectMode(mode),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        c.modeLocked ? 'Tienes una búsqueda activa en curso.' : 'Elige modo y pulsa buscar partida.',
-                        style: TextStyle(color: duel.textSecondary, fontSize: 12),
-                      ),
-                      if (c.errorCode != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Text('Error de cola: ${c.errorCode}', style: TextStyle(color: duel.danger)),
+                      const SizedBox(height: 14),
+
+                      // Mode selector header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'MODO',
+                                style: TdText.display(22),
+                              ),
+                              Text(
+                                'Selecciona modo',
+                                style: TdText.ui(12, color: td.fg2),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '${QueueController.queueModes.length} DISPONIBLES',
+                            style: TdText.mono(
+                              11,
+                              color: td.muted,
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Mode cards
+                      ...QueueController.queueModes.map(
+                        (mode) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: _ModeCard(
+                            data: _modeUiData(mode),
+                            selected: selectedMode == mode,
+                            locked: c.modeLocked,
+                            pulse: _pulseController,
+                            onTap: () => c.selectMode(mode),
+                          ),
                         ),
+                      ),
+
+                      const SizedBox(height: 14),
+                      Text(
+                        c.modeLocked
+                            ? 'Tienes una búsqueda activa en curso.'
+                            : 'Elige modo y pulsa buscar partida.',
+                        style: TdText.mono(11, color: td.fg2),
+                        textAlign: TextAlign.center,
+                      ),
+
+                      if (c.errorCode != null) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: td.loss.withAlpha(80)),
+                            color: td.loss.withAlpha(20),
+                          ),
+                          child: Text(
+                            'Error de cola: ${c.errorCode}',
+                            style: TdText.mono(11, color: td.loss),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                  decoration: BoxDecoration(
-                    color: duel.bgSoft.withOpacity(0.92),
-                    border: Border(top: BorderSide(color: duel.border)),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: canEnqueue ? _handlePrimaryCta : null,
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          ),
-                          child: const Text('Buscar partida'),
-                        ),
-                      ),
-                    ],
+
+                // ── CTA pegado al fondo ───────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                  child: FilledButton(
+                    onPressed: canEnqueue ? _handlePrimaryCta : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: td.gold,
+                      foregroundColor: const Color(0xFF16110A),
+                      disabledBackgroundColor: td.gold.withAlpha(60),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: const RoundedRectangleBorder(),
+                    ),
+                    child: Text(
+                      'BUSCAR PARTIDA',
+                      style: TdText.display(22, letterSpacing: 1.44),
+                    ),
                   ),
                 ),
               ],
@@ -156,8 +244,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> with SingleTicker
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({
+// ── Captain card ────────────────────────────────────────────────────────────
+
+class _CaptainCard extends StatelessWidget {
+  const _CaptainCard({
     required this.championName,
     required this.playerRank,
     required this.playerMmr,
@@ -169,65 +259,69 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final duel = context.duel;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(Icons.arrow_back),
+    final td = context.td;
+    final initial =
+        championName.isNotEmpty ? championName[0].toUpperCase() : '?';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          transform: GradientRotation(135 * 3.14159 / 180),
+          colors: [Color(0xFF1B1A14), Color(0xFF14141A)],
+        ),
+        border: Border.all(color: td.gold.withAlpha(77)),
+      ),
+      child: Row(
+        children: [
+          TdChampionGlyph(initial: initial, size: 72, accent: td.gold),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'CAPITÁN',
+                  style: TdText.eyebrow(color: td.gold),
+                ),
+                const SizedBox(height: 2),
+                // Keep original casing so widget tests can locate by name
+                Text(
+                  championName,
+                  style: TdText.display(26),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    if (playerRank != null) ...[
+                      Text(
+                        playerRank!,
+                        style: TdText.mono(11, color: td.fg2),
+                      ),
+                      Text(
+                        ' · ',
+                        style: TdText.mono(11, color: td.muted),
+                      ),
+                    ],
+                    if (playerMmr != null)
+                      Text(
+                        '${playerMmr} MMR',
+                        style: TdText.mono(11, color: td.fg2),
+                      ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(width: 6),
-            Text('Matchmaking', style: Theme.of(context).textTheme.titleLarge),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: duel.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: duel.border),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: duel.surfaceAlt,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(Icons.shield_outlined, color: duel.neonGreen),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Campeón seleccionado', style: TextStyle(color: duel.textSecondary, fontSize: 12)),
-                    const SizedBox(height: 2),
-                    Text(championName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-              if (playerRank != null || playerMmr != null)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(playerRank ?? '-', style: TextStyle(color: duel.neonGreen, fontWeight: FontWeight.w700)),
-                    Text('${playerMmr ?? '-'} MMR', style: TextStyle(color: duel.textSecondary, fontSize: 12)),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
+
+// ── Mode card ───────────────────────────────────────────────────────────────
 
 class _ModeCard extends StatelessWidget {
   const _ModeCard({
@@ -246,80 +340,119 @@ class _ModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final duel = context.duel;
+    final td = context.td;
     final canTap = !locked;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        scale: selected ? 1.01 : 1.0,
-        child: AnimatedBuilder(
-          animation: pulse,
-          builder: (context, _) {
-            final glow = selected ? (2 + (pulse.value * 8)) : 0.0;
-            return InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: canTap ? onTap : null,
-              child: AnimatedContainer(
+    return GestureDetector(
+      onTap: canTap ? onTap : null,
+      child: AnimatedBuilder(
+        animation: pulse,
+        builder: (context, _) {
+          return Stack(
+            children: [
+              AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: selected ? duel.surface.withOpacity(0.98) : duel.surface,
+                  gradient: selected
+                      ? LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            td.goldGlow,
+                            Colors.transparent,
+                          ],
+                        )
+                      : null,
+                  color: selected ? null : td.card,
                   border: Border.all(
-                    color: selected ? duel.neonGreen : duel.border,
-                    width: selected ? 1.6 : 1.0,
+                    color: selected ? td.gold : td.border,
+                    width: selected ? 1.5 : 1,
                   ),
-                  boxShadow: [
-                    if (selected)
-                      BoxShadow(
-                        color: duel.neonGreen.withOpacity(0.18),
-                        blurRadius: glow,
-                        spreadRadius: 0.5,
-                      ),
-                  ],
                 ),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const SizedBox(width: 3), // space for left accent bar
                     Container(
-                      width: 44,
-                      height: 44,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                        color: duel.surfaceAlt,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: duel.border),
+                        color: selected ? td.goldGlow : Colors.transparent,
+                        border: Border.all(
+                          color: selected ? td.gold : td.border2,
+                        ),
                       ),
-                      child: Icon(data.icon, color: selected ? duel.neonGreen : duel.textSecondary),
+                      child: Icon(
+                        data.icon,
+                        color: selected ? td.gold : td.fg2,
+                        size: 20,
+                      ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            data.name,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                            data.name.toUpperCase(),
+                            style: TdText.display(18),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
-                            data.mode,
-                            style: TextStyle(color: duel.textSecondary, fontSize: 12),
+                            data.desc,
+                            style: TdText.ui(12, color: td.fg2),
                           ),
                         ],
                       ),
                     ),
+                    // Radio button
+                    Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color:
+                              selected ? td.gold : td.borderStrong,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: selected
+                          ? Center(
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: td.gold,
+                                ),
+                              ),
+                            )
+                          : null,
+                    ),
                   ],
                 ),
               ),
-            );
-          },
-        ),
+              // Left accent bar when selected
+              if (selected)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 3,
+                    color: td.gold,
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
 }
+
+// ── Searching screen ────────────────────────────────────────────────────────
 
 class _QueueSearchingScreen extends StatefulWidget {
   const _QueueSearchingScreen({
@@ -333,10 +466,12 @@ class _QueueSearchingScreen extends StatefulWidget {
   final ValueChanged<String> onOpenMatch;
 
   @override
-  State<_QueueSearchingScreen> createState() => _QueueSearchingScreenState();
+  State<_QueueSearchingScreen> createState() =>
+      _QueueSearchingScreenState();
 }
 
-class _QueueSearchingScreenState extends State<_QueueSearchingScreen> with SingleTickerProviderStateMixin {
+class _QueueSearchingScreenState extends State<_QueueSearchingScreen>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _pulseController;
   Timer? _pollTimer;
   late final DateTime _startedAt;
@@ -349,8 +484,12 @@ class _QueueSearchingScreenState extends State<_QueueSearchingScreen> with Singl
   void initState() {
     super.initState();
     _startedAt = DateTime.now();
-    _minSearchSeconds = widget.selectedMode.contains('bot') ? 4 : 0;
-    _pulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1300))..repeat(reverse: true);
+    _minSearchSeconds =
+        widget.selectedMode.contains('bot') ? 4 : 0;
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    )..repeat(reverse: true);
     widget.controller.addListener(_onControllerChanged);
     _onControllerChanged();
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
@@ -378,27 +517,30 @@ class _QueueSearchingScreenState extends State<_QueueSearchingScreen> with Singl
         _resolvingMatch = false;
         if (!mounted || _navigatingToMatch) return;
         if (matchId == null || matchId.isEmpty) {
-          setState(() {
-            _matchFound = false;
-          });
+          setState(() => _matchFound = false);
           return;
         }
         _navigatingToMatch = true;
         setState(() {});
-        final elapsed = DateTime.now().difference(_startedAt).inSeconds;
-        final waitSeconds = _minSearchSeconds > elapsed ? (_minSearchSeconds - elapsed) : 0;
-        Future<void>.delayed(Duration(milliseconds: 250 + (waitSeconds * 1000)), () {
-          if (!mounted) return;
-          Navigator.of(context).pop();
-          widget.onOpenMatch(matchId);
-        });
+        final elapsed =
+            DateTime.now().difference(_startedAt).inSeconds;
+        final waitSeconds = _minSearchSeconds > elapsed
+            ? (_minSearchSeconds - elapsed)
+            : 0;
+        Future<void>.delayed(
+          Duration(milliseconds: 250 + (waitSeconds * 1000)),
+          () {
+            if (!mounted) return;
+            _pollTimer?.cancel();
+            _pollTimer = null;
+            widget.onOpenMatch(matchId);
+          },
+        );
       });
       return;
     }
     if (_matchFound && mounted) {
-      setState(() {
-        _matchFound = false;
-      });
+      setState(() => _matchFound = false);
     }
   }
 
@@ -411,90 +553,147 @@ class _QueueSearchingScreenState extends State<_QueueSearchingScreen> with Singl
 
   @override
   Widget build(BuildContext context) {
-    final duel = context.duel;
-    final elapsed = DateTime.now().difference(_startedAt).inSeconds;
-    final eta = widget.controller.activeTicket?.etaSec ?? 0;
+    final td = context.td;
+    final elapsed =
+        DateTime.now().difference(_startedAt).inSeconds;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Buscando partida')),
-      body: AnimatedBuilder(
-        animation: _pulseController,
-        builder: (context, _) {
-          final pulse = _pulseController.value;
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+      backgroundColor: td.bg,
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, _) {
+            return Column(
               children: [
+                // Back bar
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: td.border),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: _cancelQueue,
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: td.border2),
+                          ),
+                          child: Icon(
+                            Icons.arrow_back,
+                            size: 14,
+                            color: td.fg,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'BUSCANDO RIVAL',
+                        style: TdText.display(22, letterSpacing: 1.32),
+                      ),
+                      const Spacer(),
+                    ],
+                  ),
+                ),
+
                 const Spacer(),
+
+                // Pulsing glyph area
                 Container(
                   width: 98,
                   height: 98,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: duel.surfaceAlt,
-                    boxShadow: [
-                      BoxShadow(
-                        color: duel.neonGreen.withOpacity(0.18 + (pulse * 0.22)),
-                        blurRadius: 10 + (pulse * 24),
-                        spreadRadius: 1,
+                    color: td.card,
+                    border: Border.all(
+                      color: td.gold.withAlpha(
+                        (46 + (_pulseController.value * 80)).round(),
                       ),
-                    ],
+                    ),
                   ),
-                  child: Icon(Icons.manage_search_rounded, color: duel.neonGreen, size: 42),
+                  child: Icon(
+                    Icons.manage_search_rounded,
+                    color: td.gold,
+                    size: 42,
+                  ),
                 ),
                 const SizedBox(height: 22),
                 Text(
-                  _matchFound ? 'Partida encontrada' : 'Buscando rival...',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                  _matchFound ? 'PARTIDA ENCONTRADA' : 'BUSCANDO RIVAL',
+                  style: TdText.display(38),
+                ),
+                const SizedBox(height: 8),
+                // Loading dots
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(3, (i) {
+                    final active = (elapsed % 3) == i;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: active ? 10 : 6,
+                      height: active ? 10 : 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: active ? td.gold : td.muted2,
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  _formatDuration(elapsed),
+                  style: TdText.mono(28, color: td.gold),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Modo: ${_modeUiData(widget.selectedMode).name}',
-                  style: TextStyle(color: duel.textSecondary),
+                  style: TdText.mono(11, color: td.fg2),
                 ),
-                const SizedBox(height: 18),
-                Text(_formatDuration(elapsed), style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: duel.accentOrange)),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    minHeight: 7,
-                    value: (elapsed % 8) / 8,
-                    backgroundColor: duel.surfaceAlt,
-                    valueColor: AlwaysStoppedAnimation<Color>(duel.neonGreen),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  eta > 0 ? 'Tiempo estimado: ${eta}s' : 'Tiempo estimado no disponible',
-                  style: TextStyle(color: duel.textSecondary, fontSize: 12),
-                ),
+
                 const Spacer(),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: widget.controller.isBusy || _matchFound || _navigatingToMatch ? null : _cancelQueue,
-                    child: const Text('Cancelar búsqueda'),
+
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  child: TdButton(
+                    label: 'CANCELAR BÚSQUEDA',
+                    onPressed:
+                        widget.controller.isBusy ||
+                            _matchFound ||
+                            _navigatingToMatch
+                        ? null
+                        : _cancelQueue,
+                    variant: TdButtonVariant.ghost,
                   ),
                 ),
               ],
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 }
 
+// ── Mode UI data ─────────────────────────────────────────────────────────────
+
 class _ModeUiData {
   _ModeUiData({
     required this.mode,
     required this.name,
+    required this.desc,
     required this.icon,
   });
 
   final String mode;
   final String name;
+  final String desc;
   final IconData icon;
 }
 
@@ -504,24 +703,28 @@ _ModeUiData _modeUiData(String mode) {
       return _ModeUiData(
         mode: 'ranked_pvp',
         name: 'Ranked',
-        icon: Icons.leaderboard_outlined,
+        desc: 'Compite contra otros jugadores por MMR.',
+        icon: Icons.emoji_events_outlined,
       );
     case 'ranked_bot':
       return _ModeUiData(
         mode: 'ranked_bot',
         name: 'Ranked vs Bot',
+        desc: 'Entrena contra IA avanzada con MMR en juego.',
         icon: Icons.smart_toy_outlined,
       );
     case 'normal_bot':
       return _ModeUiData(
         mode: 'normal_bot',
         name: 'Casual vs Bot',
+        desc: 'Practica sin consecuencias ranked.',
         icon: Icons.sports_esports_outlined,
       );
     default:
       return _ModeUiData(
         mode: mode,
         name: _humanizeMode(mode),
+        desc: '',
         icon: Icons.bolt_outlined,
       );
   }
@@ -530,8 +733,8 @@ _ModeUiData _modeUiData(String mode) {
 String _humanizeMode(String mode) {
   return mode
       .split('_')
-      .where((part) => part.isNotEmpty)
-      .map((part) => '${part.substring(0, 1).toUpperCase()}${part.substring(1)}')
+      .where((p) => p.isNotEmpty)
+      .map((p) => '${p[0].toUpperCase()}${p.substring(1)}')
       .join(' ');
 }
 

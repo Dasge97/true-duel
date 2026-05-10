@@ -45,6 +45,17 @@ final class ProfileService
         return ['status' => 200, 'data' => ['ranking' => $ranking]];
     }
 
+    public function rankingSp(): array
+    {
+        $profiles = $this->profileRepository->findRankingBySp();
+        $ranking = array_map(
+            fn($profile): array => $this->profileViewFactory->rankingRow($profile),
+            $profiles
+        );
+
+        return ['status' => 200, 'data' => ['ranking' => $ranking]];
+    }
+
     public function users(): array
     {
         $profiles = $this->profileRepository->findLatest();

@@ -48,6 +48,12 @@ class MvpApiRepository {
     return items.map((e) => RankingEntry.fromJson(e as Map<String, dynamic>)).toList(growable: false);
   }
 
+  Future<List<RankingEntry>> rankingSp(String token) async {
+    final res = await _get('/v1/ranking/sp', token: token);
+    final items = (res['ranking'] as List<dynamic>? ?? const []);
+    return items.map((e) => RankingEntry.fromJson(e as Map<String, dynamic>)).toList(growable: false);
+  }
+
   Future<List<UserEntry>> users(String token) async {
     final res = await _get('/v1/users', token: token);
     final items = (res['users'] as List<dynamic>? ?? const []);
@@ -124,6 +130,22 @@ class MvpApiRepository {
     await _post('/v1/champions/select', token: token, body: {'championId': championId});
   }
 
+  Future<List<PersonajeEntry>> personajesCatalog(String token) async {
+    final res = await _get('/v1/personajes', token: token);
+    final items = res['personajes'] as List<dynamic>? ?? const [];
+    return items.map((e) => PersonajeEntry.fromJson(e as Map<String, dynamic>)).toList(growable: false);
+  }
+
+  Future<EquipoResult> teamGet(String token) async {
+    final res = await _get('/v1/equipo', token: token);
+    return EquipoResult.fromJson(res);
+  }
+
+  Future<EquipoResult> teamSave(String token, List<String> personajeIds) async {
+    final res = await _post('/v1/equipo', token: token, body: {'personajes': personajeIds});
+    return EquipoResult.fromJson(res);
+  }
+
   Future<StoreCatalogResult> storeCatalog(String token) async {
     final res = await _get('/v1/store/catalog', token: token);
     return StoreCatalogResult.fromJson(res);
@@ -188,6 +210,7 @@ class ProfileResult {
     required this.name,
     required this.rank,
     required this.mmr,
+    required this.sp,
     required this.level,
     required this.experienceTotal,
     required this.experienceToNextLevel,
@@ -204,6 +227,7 @@ class ProfileResult {
       name: json['name'] as String? ?? '',
       rank: json['rank'] as String? ?? '',
       mmr: json['mmrGlobal'] as int? ?? 0,
+      sp: json['puntosHabilidad'] as int? ?? 0,
       level: json['level'] as int? ?? 0,
       experienceTotal: json['experienceTotal'] as int? ?? 0,
       experienceToNextLevel: json['experienceToNextLevel'] as int? ?? 0,
@@ -218,6 +242,7 @@ class ProfileResult {
   final String name;
   final String rank;
   final int mmr;
+  final int sp;
   final int level;
   final int experienceTotal;
   final int experienceToNextLevel;
@@ -229,10 +254,15 @@ class ProfileResult {
 }
 
 class RankingEntry {
-  const RankingEntry({required this.name, required this.mmr});
-  factory RankingEntry.fromJson(Map<String, dynamic> json) => RankingEntry(name: json['name'] as String? ?? '', mmr: json['mmr'] as int? ?? 0);
+  const RankingEntry({required this.name, required this.mmr, required this.sp});
+  factory RankingEntry.fromJson(Map<String, dynamic> json) => RankingEntry(
+    name: json['name'] as String? ?? '',
+    mmr: json['mmr'] as int? ?? 0,
+    sp: json['sp'] as int? ?? 0,
+  );
   final String name;
   final int mmr;
+  final int sp;
 }
 
 class UserEntry {
@@ -477,6 +507,99 @@ class DailyMission {
   final int rewardCoins;
   final bool claimed;
   final bool completed;
+}
+
+class PasivaEntry {
+  const PasivaEntry({required this.nombre, required this.descripcion});
+
+  factory PasivaEntry.fromJson(Map<String, dynamic> json) => PasivaEntry(
+    nombre: json['nombre'] as String? ?? '',
+    descripcion: json['descripcion'] as String? ?? '',
+  );
+
+  final String nombre;
+  final String descripcion;
+}
+
+class PersonajeEntry {
+  const PersonajeEntry({
+    required this.id,
+    required this.nombre,
+    required this.rolSinergia,
+    required this.descripcion,
+    required this.habilidadEspecialNombre,
+    required this.habilidadEspecialDescripcion,
+    required this.tipoEspecial,
+    required this.costeCargas,
+    required this.precioMonedas,
+    required this.desbloqueado,
+    required this.nivelMaestria,
+    required this.xpMaestria,
+    required this.tags,
+    this.pasiva,
+  });
+
+  factory PersonajeEntry.fromJson(Map<String, dynamic> json) {
+    final pasivaJson = json['pasiva'] as Map<String, dynamic>?;
+    final rawTagsRaw = json['tags'];
+    final rawTags = rawTagsRaw is List ? rawTagsRaw : const <dynamic>[];
+    return PersonajeEntry(
+      id: json['id'] as String? ?? '',
+      nombre: json['nombre'] as String? ?? '',
+      rolSinergia: json['rolSinergia'] as String? ?? '',
+      descripcion: json['descripcion'] as String? ?? '',
+      habilidadEspecialNombre: json['habilidadEspecialNombre'] as String? ?? '',
+      habilidadEspecialDescripcion: json['habilidadEspecialDescripcion'] as String? ?? '',
+      tipoEspecial: json['tipoEspecial'] as String? ?? '',
+      costeCargas: json['costeCargas'] as int? ?? 3,
+      precioMonedas: json['precioMonedas'] as int? ?? 0,
+      desbloqueado: json['desbloqueado'] as bool? ?? false,
+      nivelMaestria: json['nivelMaestria'] as int? ?? 1,
+      xpMaestria: json['xpMaestria'] as int? ?? 0,
+      tags: rawTags.whereType<String>().toList(growable: false),
+      pasiva: pasivaJson != null ? PasivaEntry.fromJson(pasivaJson) : null,
+    );
+  }
+
+  final String id;
+  final String nombre;
+  final String rolSinergia;
+  final String descripcion;
+  final String habilidadEspecialNombre;
+  final String habilidadEspecialDescripcion;
+  final String tipoEspecial;
+  final int costeCargas;
+  final int precioMonedas;
+  final bool desbloqueado;
+  final int nivelMaestria;
+  final int xpMaestria;
+  final List<String> tags;
+  final PasivaEntry? pasiva;
+}
+
+class EquipoSlot {
+  const EquipoSlot({required this.slot, required this.personajeId, required this.personaje});
+
+  factory EquipoSlot.fromJson(Map<String, dynamic> json) => EquipoSlot(
+    slot: json['slot'] as int? ?? 1,
+    personajeId: json['personajeId'] as String? ?? '',
+    personaje: json['personaje'] != null ? PersonajeEntry.fromJson(json['personaje'] as Map<String, dynamic>) : null,
+  );
+
+  final int slot;
+  final String personajeId;
+  final PersonajeEntry? personaje;
+}
+
+class EquipoResult {
+  const EquipoResult({required this.slots});
+
+  factory EquipoResult.fromJson(Map<String, dynamic> json) {
+    final items = json['equipo'] as List<dynamic>? ?? const [];
+    return EquipoResult(slots: items.map((e) => EquipoSlot.fromJson(e as Map<String, dynamic>)).toList(growable: false));
+  }
+
+  final List<EquipoSlot> slots;
 }
 
 class MvpApiException implements Exception {

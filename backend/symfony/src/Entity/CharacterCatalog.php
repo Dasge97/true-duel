@@ -19,7 +19,7 @@ final class CharacterCatalog
         private string $name,
         #[ORM\Column(name: 'rol_sinergia', type: 'string', length: 32)]
         private string $roleSynergy,
-        #[ORM\Column(type: 'text')]
+        #[ORM\Column(name: 'descripcion', type: 'text')]
         private string $description,
         #[ORM\Column(name: 'habilidad_especial_nombre', type: 'string', length: 96)]
         private string $specialAbilityName,
@@ -33,7 +33,7 @@ final class CharacterCatalog
         private bool $initiallyUnlocked,
         #[ORM\Column(name: 'precio_monedas', type: 'integer')]
         private int $coinPrice,
-        #[ORM\Column(type: 'boolean')]
+        #[ORM\Column(name: 'activo', type: 'boolean')]
         private bool $active,
         #[ORM\Column(name: 'orden', type: 'integer')]
         private int $sortOrder,

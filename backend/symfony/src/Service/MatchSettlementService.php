@@ -16,12 +16,14 @@ use App\Repository\PlayerMissionRepository;
 use App\Repository\PlayerProfileRepository;
 use App\Support\UuidGenerator;
 use Doctrine\DBAL\Connection;
+use Psr\Log\LoggerInterface;
 use Throwable;
 
 final class MatchSettlementService
 {
     public function __construct(
         private readonly Connection $connection,
+        private readonly LoggerInterface $logger,
         private readonly GameMatchRepository $matchRepository,
         private readonly MatchOutcomeRuleRepository $matchOutcomeRuleRepository,
         private readonly MatchSettlementRepository $matchSettlementRepository,
@@ -66,6 +68,9 @@ final class MatchSettlementService
         $enemyName = $this->resolveEnemyName($match, $playerId);
         $result = $victory ? 'win' : ($draw ? 'draw' : 'loss');
 
+        $metrics = $this->combatMetrics($state);
+
+        // ── Transacción principal: recompensas + settlement record ──────────
         try {
             $this->connection->beginTransaction();
 
@@ -96,7 +101,6 @@ final class MatchSettlementService
             if ($this->missionRepository->addChampionUsedIfNew($playerId, $championId)) {
                 $this->missionRepository->incrementProgress($playerId, 'play_3_champions', 1);
             }
-
             $this->historyRepository->add(
                 $this->uuidGenerator->v4(),
                 $playerId,
@@ -105,9 +109,6 @@ final class MatchSettlementService
                 (int) ($state['turnNo'] ?? 0),
                 $outcome['globalMmrDelta'],
             );
-
-            $metrics = $this->combatMetrics($state);
-            $competitiveProgress = $this->clasificacionCompetitivaService->procesarResultadoPartida($playerId, $matchId, $result, $metrics);
             $settlement = $this->matchSettlementRepository->create(
                 $matchId,
                 $playerId,
@@ -121,15 +122,41 @@ final class MatchSettlementService
             );
 
             $this->connection->commit();
-
-            return ['status' => 200, 'data' => $this->settlementToResponse($settlement, $match, $playerId, $metrics, $competitiveProgress)];
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             if ($this->connection->isTransactionActive()) {
                 $this->connection->rollBack();
             }
 
+            $this->logger->error(sprintf(
+                'MatchSettlement failed [%s] %s in %s:%d',
+                get_class($e),
+                $e->getMessage(),
+                basename($e->getFile()),
+                $e->getLine(),
+            ), ['matchId' => $matchId, 'playerId' => $playerId]);
+
             return ['status' => 500, 'data' => ['error' => ['code' => 'SETTLEMENT_FAILED', 'message' => 'Failed to complete match settlement.']]];
         }
+
+        // ── Procesado competitivo post-commit (solo ranked, no-fatal) ───────
+        $competitiveProgress = [];
+        if ($match->queueType() === 'ranked') {
+            try {
+                $competitiveProgress = $this->clasificacionCompetitivaService->procesarResultadoPartida(
+                    $playerId, $matchId, $result, $metrics
+                );
+            } catch (Throwable $e) {
+                $this->logger->warning(sprintf(
+                    'Competitive processing failed (non-fatal) [%s] %s in %s:%d',
+                    get_class($e),
+                    $e->getMessage(),
+                    basename($e->getFile()),
+                    $e->getLine(),
+                ));
+            }
+        }
+
+        return ['status' => 200, 'data' => $this->settlementToResponse($settlement, $match, $playerId, $metrics, $competitiveProgress)];
     }
 
     /** @return array{globalMmrDelta:int,championMmrDelta:int,coins:int,gems:int,xp:int,masteryXp:int}|null */
@@ -146,14 +173,13 @@ final class MatchSettlementService
     {
         $isPvp = $match->opponentPlayerId() !== null && $match->botName() === null;
         if ($isPvp) {
-            if ($playerId === $match->playerId()) {
-                return (string) ($state['p1ChampionId'] ?? 'vanguard');
-            }
-
-            return (string) ($state['p2ChampionId'] ?? 'vanguard');
+            $champKey = $playerId === $match->playerId() ? 'p1Champions' : 'p2Champions';
+            $champs   = $state[$champKey] ?? [];
+            return (string) ($champs[0]['id'] ?? 'vanguard');
         }
 
-        return (string) ($state['playerChampionId'] ?? 'vanguard');
+        $playerChampions = $state['playerChampions'] ?? [];
+        return (string) ($playerChampions[0]['id'] ?? 'vanguard');
     }
 
     private function resolveEnemyName(GameMatch $match, string $playerId): string
